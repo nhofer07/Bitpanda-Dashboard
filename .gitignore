@@ -18,3 +18,9 @@ synology-chart-history.json
 portfolio-history-corrections.json
 
 auth-sessions.json
+credentials.json
+auth.json
+cashflow-overrides.json
+.bitpanda-dashboard/
+data/
+data-*/
