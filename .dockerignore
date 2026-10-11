@@ -1,0 +1,16 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.synology.example
+**/node_modules
+**/.cache
+**/manual-positions.json
+backend/.cache
+backend/manual-positions.json
+frontend/dist
+release
+data
+*.log
+.DS_Store
+mobile

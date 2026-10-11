@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  bitpanda-dashboard:
+    build: .
+    container_name: "${CONTAINER_NAME:-bitpanda-dashboard}"
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-8085}:3001"
+    environment:
+      ALLOWED_HOSTS: "*"
+      CREDENTIALS_STORAGE: "memory"
+      DASHBOARD_AUTH: "required"
+      TZ: "Europe/Vienna"
+    volumes:
+      - "${DASHBOARD_DATA_PATH:-./data}:/data"
