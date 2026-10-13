@@ -14,6 +14,7 @@ WORKDIR /app/backend
 COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY backend/ ./
+RUN node --check server.js && node --test test/*.test.js
 RUN rm -rf /app/backend/.cache /app/backend/manual-positions.json
 COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 RUN mkdir -p /data

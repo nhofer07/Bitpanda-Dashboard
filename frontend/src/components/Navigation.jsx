@@ -8,6 +8,8 @@ export default function Navigation({ activeView, setActiveView }) {
     { id: "overview", label: "Zeiträume", short: "Zeit" },
     { id: "fiat", label: "Cashflow", short: "Cash" },
     { id: "calendar", label: "Kalender", short: "Kal" },
+    { id: "account", label: "Kontodaten", short: "Konto" },
+    { id: "fees", label: "Gebühren", short: "Geb." },
     { id: "tax", label: "Steuern", short: "Tax" }
     , { id: "market", label: "Marktanalyse", short: "Markt" },
     { id: "fusion", label: "Fusion", short: "Trade" }

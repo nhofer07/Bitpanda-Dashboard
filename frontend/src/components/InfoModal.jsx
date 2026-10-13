@@ -40,10 +40,30 @@ const PAGE_INFO = {
     intro: "Diese Ansicht rekonstruiert Käufe und Verkäufe nach Durchschnittskosten-Methode und zeigt die Ergebnisse je Asset und Anlageklasse.",
     sections: [
       ["Brutto G/V", "Verkaufserlös vor Trading-Gebühren minus die anteilige Kostenbasis der verkauften Menge."],
-      ["Netto G/V", "Brutto G/V nach Kauf- und Verkaufsgebühren sowie KESt. Bei vorhandener Bitpanda-Steuer wird diese verwendet, sonst bei positiven Nicht-Krypto-Gewinnen geschätzt."],
-      ["Trading-Gebühren", "Explizit ausgewiesene Bitpanda-Gebühren und erkannte Fixgebühren. Sparplan-Ausführungen werden dabei gebührenfrei behandelt."],
+      ["Netto G/V", "Brutto G/V nach Kauf- und Verkaufsgebühren sowie gebuchter KESt nach Erstattungen. Allgemeine Steuerkorrekturen werden im Gesamtergebnis berücksichtigt."],
+      ["Trading-Gebühren", "Verwendet die ausdrücklich ausgewiesenen Bitpanda-Gebühren, einschließlich verschachtelter Gebührenfelder. Fehlende Gebühren werden aus den vorhandenen Handelsbeträgen abgeleitet."],
       ["Eigene Finanzierungsgebühren", "Optional von dir ergänzte Kosten, etwa für Hebelpositionen. Sie werden nur lokal im Browser gespeichert."],
       ["Filter & Details", "Die Ansicht kann Assets ausblenden oder nach Anlageklasse filtern. Öffne ein Asset für jede einzelne Kauf- und Verkaufstransaktion."]
+    ]
+  },
+  account: {
+    title: "Kontodaten erklärt",
+    intro: "Diese Ansicht verwendet deine Bitpanda-Kontobuchungen und die Portfolio-Werte aus der API.",
+    sections: [
+      ["Erträge", "Staking, passives Earn, Cash Plus und Boni werden getrennt nach Asset und Jahr gezeigt. Nach Gebühr entspricht dem Bruttoertrag abzüglich des gemeldeten Gebührenfelds. Historische Eurobeträge erscheinen nur, wenn sie für die passende Buchung verfügbar sind."],
+      ["Buchungsverlauf", "Zeigt Bewegungen und Bestände je Wallet. Der Abgleich vergleicht aufeinanderfolgende Bewegungen derselben Einheit. Ohne vollständige Vergleichswerte bleibt eine Buchung ungeprüft. Kredit- und Verrechnungskonten können zusätzlich eingeblendet werden."],
+      ["Sonderereignisse", "Tausch, Krypto-Zusammenlegung und Staking-Umbuchungen zeigen alle beteiligten Buchungen gemeinsam. Diese Bewegungen werden nicht als neue Erträge addiert."],
+      ["Bitpanda-Abgleich", "Vergleicht Bitpandas Bestand, investierten Betrag und durchschnittlichen Kaufpreis mit der Rekonstruktion des Dashboards. Unterschiede können aus verschiedenen Berechnungsmethoden oder Umbuchungen entstehen."]
+    ]
+  },
+  fees: {
+    title: "Handelsgebühren erklärt",
+    intro: "Die Gebührenseite zeigt jeden abgeschlossenen Kauf und Verkauf genau einmal und macht die Gesamtsumme überprüfbar.",
+    sections: [
+      ["Datenquelle", "Trades sind Gebühren aus der Handelshistorie. Operations ergänzt fehlende Gebühren aus den EUR-Handelsbuchungen. Berechnet / Fallback kennzeichnet Werte ohne explizites Gebührenfeld."],
+      ["Auswahl", "Filtere nach Jahr, Asset, Kauf oder Verkauf und Quelle. Sortiere nach höchster Gebühr oder öffne die Zusammenfassung nach Asset."],
+      ["Weitere Kontokosten", "Zusätzliche Kostenbuchungen aus Hebelpositionen, Staking/Earn und Transfers werden separat gezeigt. Bereits im Trade enthaltene Gebührenbelege werden nicht nochmals addiert. Coin-Gebühren ohne historischen API-Eurobetrag bleiben in ihrer Originaleinheit."],
+      ["Summe", "Es wird nur die Gebühr des jeweiligen Trades addiert. Kaufgebühren, die bei einem Verkauf anteilig in die Gewinnberechnung eingehen, werden hier nicht noch einmal gezählt. KESt und separate Finanzierungsgebühren gehören nicht zur Summe."]
     ]
   },
   calculator: {
@@ -88,11 +108,11 @@ const PAGE_INFO = {
   },
   tax: {
     title: "Steuer-Cockpit erklärt",
-    intro: "Das Steuer-Cockpit ist eine Orientierung für deine Dokumentation und ersetzt keine Steuerberatung.",
+    intro: "Diese Ansicht zeigt deine bereits bezahlte KESt aus den Bitpanda-Buchungen.",
     sections: [
-      ["KESt aus Verkäufen", "Nutzt eine von Bitpanda im Trade ausgewiesene Steuer. Fehlt sie, wird für positive Nicht-Krypto-Gewinne nach Gebühren eine KESt-Schätzung berechnet."],
-      ["Dividenden und Quellensteuer", "Gebuchte Dividenden werden getrennt gezeigt; einbehaltene Quellensteuer wird für die Schätzung berücksichtigt."],
-      ["Grenzen", "Verlustverrechnung mit externen Depots, individuelle Steuerfälle und spätere Korrekturen sind nicht automatisch abbildbar."]
+      ["KESt aus Verkäufen", "Gebuchte Steuerabzüge minus direkte und allgemeine Erstattungen, plus tatsächlich bezahlte Nachforderungen. Keine KESt-Schätzung."],
+      ["Dividenden und Quellensteuer", "Dividenden-KESt wird separat gezeigt. Quellensteuer und Handelsgebühren sind nicht im Verkaufs-KESt-Betrag enthalten."],
+      ["Grenzen", "Öffne ein Jahr und danach eine Buchung für Datum, Asset, Steuerabzug und Erstattungen. Allgemeine Korrekturen bleiben separat sichtbar."]
     ]
   },
   market: {

@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { hideAssetKey, readHiddenAssets, showAssetKey, writeHiddenAssets } from "./savedAssetView.js";
 import { feeAdjustmentTotal, readProfitFeeAdjustments, writeProfitFeeAdjustments } from "./profitFeeAdjustments.js";
 
+import { getProfitValue, realizedTradingFees } from "./profitResults.js";
+
 const eur = value => `${Number(value || 0).toLocaleString("de-DE", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
@@ -23,12 +25,6 @@ const profitModes = {
   unrealized: { title: "Unrealisiert", column: "Unrealisiert" },
   combined: { title: "Gesamt G/V", column: "Gesamt" }
 };
-
-function getProfitValue(asset, mode) {
-  if (mode === "unrealized") return Number(asset.unrealizedProfit || 0);
-  if (mode === "combined") return Number(asset.netRealizedProfit || asset.realizedProfit || 0) + Number(asset.unrealizedProfit || 0);
-  return Number(asset.netRealizedProfit || asset.realizedProfit || 0);
-}
 
 function calculateAssetNetResults(asset) {
   return {
@@ -65,7 +61,9 @@ export default function ProfitLossView({ onSelectAsset }) {
           ...(result.profitLoss || {}),
           openPositions: result.openPositions || [],
           portfolio: result.portfolio || {},
-          dividends: result.dividends || []
+          dividends: result.dividends || [],
+          paidTax: result.paidTax,
+          accountInsights: result.accountInsights
         });
       }))
       .catch(err => setError(err.message))
@@ -153,16 +151,13 @@ export default function ProfitLossView({ onSelectAsset }) {
   const unallocatedManualFees = effectiveFeeAdjustments
     .filter(entry => !enrichedAssets.some(asset => String(asset.assetKey) === String(entry.assetKey)))
     .reduce((sum, entry) => sum + Math.max(0, Number(entry.amount || 0)), 0);
-  const totalProfit = visible.reduce((sum, asset) => sum + getProfitValue(asset, profitMode), 0) - (profitMode === "unrealized" ? 0 : unallocatedManualFees);
+  const isCompleteView = visible.length === enrichedAssets.length;
+  const generalTaxAdjustment = isCompleteView ? Number(data.unallocatedTaxAdjustment || 0) : 0;
+  const totalProfit = visible.reduce((sum, asset) => sum + getProfitValue(asset, profitMode), 0) - (profitMode === "unrealized" ? 0 : (isCompleteView ? unallocatedManualFees : 0) + generalTaxAdjustment);
   const totalGrossProfit = visible.reduce((sum, asset) => sum + Number(asset.grossRealizedProfit || 0), 0);
   const totalTradingFees = visible.reduce((sum, asset) => sum + Number(asset.tradingFees || 0), 0);
-  const totalManualFees = effectiveFeeAdjustments.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount || 0)), 0);
-  const totalEstimatedTax = visible.reduce((sum, asset) => sum + Number(asset.estimatedTax || 0), 0);
-  const paidDividendTax = (data.dividends || []).reduce((sum, transaction) => {
-    const tags = transaction.attributes?.tags || [];
-    const isTax = tags.some(tag => String(tag?.attributes?.short_name || "").toLowerCase().includes("src_tax"));
-    return isTax ? sum + Math.abs(Number(transaction.attributes?.amount || 0)) : sum;
-  }, 0);
+  const totalManualFees = visible.reduce((sum, asset) => sum + asset.manualFees, 0) + (isCompleteView ? unallocatedManualFees : 0);
+  const paidDividendTax = data.accountInsights?.available ? data.accountInsights.sourceTax?.totalPaid : null;
   const categorySummary = useMemo(() => buildCategorySummary(visible, profitMode).filter(visibleCategory), [profitMode, visible]);
   const ranking = useMemo(() => {
     const withProfit = visible.map(asset => ({
@@ -196,7 +191,7 @@ export default function ProfitLossView({ onSelectAsset }) {
           <div className="eyebrow">Portfolio-Ansicht</div>
           <h1>Realisierte Gewinne / Verluste</h1>
           <PageDescription summary="Realisierte Ergebnisse nach Gebühren und Steuern, aufgeteilt nach Asset und Anlageklasse.">
-            Brutto G/V wird aus Bitpanda-Preis × Menge vor Kauf- und Verkaufsgebühr berechnet. Netto G/V zieht die tatsächlichen Bitpanda-Gebühren sowie KESt ab. Wenn Bitpanda eine einbehaltene Steuer im Trade liefert, wird sie verwendet; andernfalls sind 27,5 % auf den positiven Gewinn nach Gebühren eine Schätzung. Krypto erhält keine KESt-Schätzung.
+            Brutto G/V basiert auf den Fiat-Beträgen vor Kauf- und Verkaufsgebühren. Netto G/V berücksichtigt die ausgewiesenen Handelsgebühren und gebuchte KESt nach zugeordneten Erstattungen. Die gesamte bezahlte KESt enthält zusätzlich allgemeine Steuererstattungen und bezahlte Nachforderungen.
           </PageDescription>
         </div>
         <div className="hero-status">
@@ -206,7 +201,7 @@ export default function ProfitLossView({ onSelectAsset }) {
       </section>
 
       <div className="info-box">
-        <strong>Datenbasis:</strong> Menge, Ausführungszeit, Bitpanda-Preis, belasteter oder gutgeschriebener Fiat-Betrag sowie ausgewiesene Gebühren und Steuern stammen aus den Transaktionsdaten. Kostenbasis, Brutto G/V, Netto G/V und eine fehlende KESt werden daraus berechnet. Die Werte können von der Bitpanda-App abweichen, wenn dort weitere Verlustverrechnungen oder steuerliche Sonderfälle berücksichtigt werden.
+        <strong>Datenbasis:</strong> Gebühren und bezahlte KESt stammen aus den Bitpanda-Buchungen. Kostenbasis und Gewinne werden daraus berechnet. Bezahlte KESt und Quellensteuer gelten für alle geladenen Jahre und Assets; die übrigen Kennzahlen folgen deiner Auswahl. Allgemeine Steuerkorrekturen sind im Gesamtergebnis aller Assets enthalten und werden keinem einzelnen Asset zugeteilt.
       </div>
 
       <div className="stats-grid profit-stats-grid">
@@ -214,11 +209,15 @@ export default function ProfitLossView({ onSelectAsset }) {
         <Metric title="Brutto realisiert" value={eur(totalGrossProfit)} tone={totalGrossProfit >= 0 ? "positive" : "negative"} />
         <Metric title="Trading-Gebühren" value={eur(totalTradingFees)} />
         <Metric title="Eigene Finanzierungsgebühren" value={eur(totalManualFees)} />
-        <Metric title="KESt (Bitpanda/Schätzung)" value={eur(totalEstimatedTax)} />
-        <Metric title="Bezahlte Quellensteuer" value={eur(paidDividendTax)} />
+        <Metric title="Bezahlte KESt aus Verkäufen · gesamt" value={data.paidTax?.available ? eur(data.paidTax.salesPaid) : "Nicht verfügbar"} />
+        <Metric title="Bezahlte Quellensteuer · gesamt" value={paidDividendTax == null ? "Nicht verfügbar" : eur(paidDividendTax)} />
         <Metric title="Assets in Ansicht" value={visible.length} />
         <Metric title="Ausgeblendete Assets" value={hiddenCount} />
       </div>
+
+      {!data.paidTax?.available && <div className="info-box">{data.paidTax?.error || "Steuerbuchungen sind noch nicht verfügbar. Bitte Dashboard aktualisieren."} Gewinne enthalten solange keinen KESt-Abzug.</div>}
+
+      {(data.warnings || []).length > 0 && <div className="warning-box">Kostenbasis teilweise unvollständig: {(data.warnings || []).map(w => w.asset).join(", ")}. Rewards, Transfers oder fehlende Käufe können die berechneten Gewinne beeinflussen. Gebuchte Gebühren und Steuern bleiben davon unabhängig.</div>}
 
       <CategoryOverview summary={categorySummary} mode={profitMode} />
 
@@ -461,9 +460,9 @@ function buildCategorySummary(assets, mode = "realized") {
     item.grossRealizedProfit += Number(asset.grossRealizedProfit || 0);
     item.grossGains += Math.max(0, Number(asset.grossRealizedProfit || 0));
     item.grossLosses += Math.min(0, Number(asset.grossRealizedProfit || 0));
-    item.tradingFees += Number(asset.tradingFees || 0) + Number(asset.manualFees || 0);
+    item.tradingFees += realizedTradingFees(asset) + Number(asset.manualFees || 0);
     item.estimatedTax += Number(asset.estimatedTax || 0);
-    const assetNetProfit = Number(asset.netRealizedProfit || asset.realizedProfit || 0);
+    const assetNetProfit = Number(asset.netRealizedProfit ?? asset.realizedProfit ?? 0);
     item.netRealizedProfit += assetNetProfit;
     item.netGains += Math.max(0, assetNetProfit);
     item.netLosses += Math.min(0, assetNetProfit);
@@ -537,8 +536,8 @@ function CategoryOverview({ summary, mode }) {
                 ) : (
                   <div className="detail-row"><span>Brutto G/V</span><strong className={grossProfit >= 0 ? "positive" : "negative"}>{eur(grossProfit)}</strong></div>
                 )}
-                {mode === "realized" && <><div className="detail-row"><span>Gebühren</span><strong>{eur(fees)}</strong></div>
-                <div className="detail-row"><span>KESt (Bitpanda/Schätzung)</span><strong>{eur(tax)}</strong></div>
+                {mode === "realized" && <><div className="detail-row"><span>Gebühren der Verkäufe inkl. Kaufanteil</span><strong>{eur(fees)}</strong></div>
+                <div className="detail-row"><span>Gebuchte KESt</span><strong>{eur(tax)}</strong></div>
                 {showGrossSplit ? (
                   <>
                     <div className="detail-row"><span>Netto-Gewinne</span><strong className="positive">{eur(netGains)}</strong></div>
@@ -561,7 +560,7 @@ function Details({ asset }) {
     <div>
       <h3>Trade-Details: {assetTitle(asset)}</h3>
       <p className="muted">
-        Symbol: {assetSymbol(asset)} · Restliche Kostenbasis: {eur(asset.costBasis)} (ohne bereits separat ausgewiesene Kaufgebühren) · Trading-Gebühren: {eur(asset.tradingFees)} · Eigene Finanzierungsgebühren: {eur(asset.manualFees)} · KESt (Bitpanda/Schätzung): {eur(asset.estimatedTax)}
+        Symbol: {assetSymbol(asset)} · Restliche Kostenbasis: {eur(asset.costBasis)} (ohne bereits separat ausgewiesene Kaufgebühren) · Trading-Gebühren: {eur(asset.tradingFees)} · Eigene Finanzierungsgebühren: {eur(asset.manualFees)} · Gebuchte KESt: {eur(asset.estimatedTax)}
       </p>
       <div className="details-table-wrap">
         <table className="clean-table compact">
@@ -586,8 +585,8 @@ function Details({ asset }) {
                   <td>{trade.price || "-"}</td>
                   <td className={grossProfit == null ? "muted" : grossProfit >= 0 ? "positive" : "negative"}>{grossProfit == null ? "-" : eur(grossProfit)}</td>
                   <td>{eur(trade.tradingFee)}</td>
-                  <td>{trade.type === "sell" ? eur(trade.estimatedTax) : "-"}</td>
-                  <td>{trade.type === "sell" ? trade.taxSource === "bitpanda_withheld" ? "Bitpanda einbehalten" : "27,5 % geschätzt" : "-"}</td>
+                  <td>{trade.type === "sell" && trade.taxSource === "bitpanda_bookings" ? eur(trade.estimatedTax) : "-"}</td>
+                  <td>{trade.type === "sell" ? trade.taxSource === "bitpanda_bookings" ? "Bitpanda · nach Erstattung" : "Nicht verfügbar" : "-"}</td>
                   <td className={profit == null ? "muted" : profit >= 0 ? "positive strong" : "negative strong"}>{profit == null ? "-" : eur(profit)}</td>
                   <td>{trade.month || "-"}</td>
                   <td>{trade.year || "-"}</td>

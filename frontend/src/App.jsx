@@ -1,4 +1,6 @@
 import PageDescription from "./components/PageDescription.jsx";
+import ActionFeedback from "./components/ActionFeedback.jsx";
+import { notify } from "./components/actionFeedback.js";
 import { useCallback, useEffect, useState } from "react";
 import SettingsView from "./components/SettingsView.jsx";
 import AssetsView from "./components/AssetsView.jsx";
@@ -12,6 +14,8 @@ import SummaryCards from "./components/SummaryCards.jsx";
 import SplitColumns from "./components/SplitColumns.jsx";
 import TransactionsTable from "./components/TransactionsTable.jsx";
 import AdjustmentsView from "./components/AdjustmentsView.jsx";
+import AccountDataView from "./components/AccountDataView.jsx";
+import FeesView from "./components/FeesView.jsx";
 import TaxCockpitView from "./components/TaxCockpitView.jsx";
 import MarketAnalysisView from "./components/MarketAnalysisView.jsx";
 import FusionView from "./components/FusionView.jsx";
@@ -21,7 +25,7 @@ import { readBrowserCredentials } from "./components/browserCredentials.js";
 
 const APP_VIEW_STORAGE_KEY = "bitpanda-dashboard-active-view";
 const APP_ASSET_STORAGE_KEY = "bitpanda-dashboard-selected-asset";
-const RESTORABLE_VIEWS = new Set(["home", "profits", "calculator", "overview", "fiat", "calendar", "adjustments", "tax", "market", "fusion", "asset", "settings", "assets"]);
+const RESTORABLE_VIEWS = new Set(["home", "profits", "calculator", "overview", "fiat", "calendar", "adjustments", "tax", "fees", "account", "market", "fusion", "asset", "settings", "assets"]);
 
 function readStoredView() {
   try {
@@ -157,7 +161,7 @@ export default function App() {
     }
   }
 
-  async function loadDashboardData({ refresh = false, silent = false, force = false } = {}) {
+  async function loadDashboardData({ refresh = false, silent = false, force = false, feedback = true } = {}) {
     try {
       if (refresh) {
         setRefreshing(true);
@@ -174,11 +178,15 @@ export default function App() {
 
       setDashboardError("");
       setDashboardData(data);
+      if (refresh && feedback) notify(data.paidTax?.available ? "Dashboard aktualisiert. Bestände, Gebühren und Steuerbuchungen sind geladen." : "Dashboard aktualisiert. Steuerbuchungen sind noch nicht verfügbar.", data.paidTax?.available ? "success" : "warning");
       if (Array.isArray(data.transactions)) {
         setTransactions(data.transactions);
       }
+      return true;
     } catch (err) {
       if (!silent) setDashboardError(err.message);
+      if (refresh && feedback) notify(`Aktualisieren fehlgeschlagen: ${err.message}`, "error");
+      return false;
     } finally {
       if (!silent) setDashboardLoading(false);
       if (refresh) setRefreshing(false);
@@ -196,21 +204,18 @@ export default function App() {
     setActiveView(viewId === "open" ? "home" : viewId === "asset" ? "assets" : viewId);
   }
 
-  function updateCashflowOverride(transactionId, classification) {
-    setCashflowOverrides(current => {
-      const next = {
-        ...current,
-        [transactionId]: classification
-      };
-
-      writeCashflowOverrides(next);
-      fetch("/api/cashflow-overrides", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ overrides: next })
-      }).catch(() => { /* Browser storage remains available and is retried after the next load. */ });
-      return next;
-    });
+  async function updateCashflowOverride(transactionId, classification) {
+    const next = { ...cashflowOverrides, [transactionId]: classification };
+    setCashflowOverrides(next);
+    const localSaved = writeCashflowOverrides(next);
+    const feedbackId = notify("Cashflow-Zuordnung wird gespeichert …", "pending", "cashflow-save");
+    try {
+      const response = await fetch("/api/cashflow-overrides", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ overrides: next }) });
+      if (!response.ok) throw new Error("Server hat die Änderung nicht gespeichert.");
+      notify("Cashflow-Zuordnung gespeichert.", "success", feedbackId);
+    } catch {
+      notify(localSaved ? "Cashflow-Zuordnung nur in diesem Browser gespeichert. Synchronisierung mit der Synology fehlgeschlagen." : "Cashflow-Zuordnung geändert, konnte aber nicht gespeichert werden. Bitte erneut versuchen.", localSaved ? "warning" : "error", feedbackId);
+    }
   }
 
   async function loadSavedCashflowOverrides() {
@@ -287,7 +292,7 @@ export default function App() {
         />
       )}
 
-      {activeView === "assets" && <AssetsView data={dashboardData} loading={dashboardLoading} error={dashboardError} selectedAssetKey={selectedAssetKey} selectedAssetData={selectedAssetData} onSelectAsset={openAsset} onTradeCompleted={() => loadDashboardData({ refresh: true })} />}
+      {activeView === "assets" && <AssetsView data={dashboardData} loading={dashboardLoading} error={dashboardError} selectedAssetKey={selectedAssetKey} selectedAssetData={selectedAssetData} onSelectAsset={openAsset} onTradeCompleted={async () => { if (!await loadDashboardData({ refresh: true, feedback: false })) throw new Error("Bestände konnten nicht aktualisiert werden."); }} />}
 
       {activeView === "overview" && <PeriodOverview cashflowOverrides={cashflowOverrides} />}
       {activeView === "calendar" && <PerformanceCalendar data={dashboardData} loading={dashboardLoading} error={dashboardError} cashflowOverrides={cashflowOverrides} />}
@@ -304,7 +309,9 @@ export default function App() {
 
       {activeView === "adjustments" && <AdjustmentsView />}
 
-      {activeView === "tax" && <TaxCockpitView />}
+      {activeView === "tax" && <TaxCockpitView onSelectAsset={openAsset} />}
+      {activeView === "account" && <AccountDataView data={dashboardData} loading={dashboardLoading} error={dashboardError} onSelectAsset={openAsset} />}
+      {activeView === "fees" && <FeesView data={dashboardData} loading={dashboardLoading} error={dashboardError} onSelectAsset={openAsset} />}
 
       {activeView === "market" && <MarketAnalysisView dashboardData={dashboardData} loading={dashboardLoading} />}
       {activeView === "fusion" && <FusionView />}
@@ -366,6 +373,7 @@ export default function App() {
       )}
       </main>
       {infoOpen && <InfoModal view={activeView} onClose={closeInfo} />}
+      <ActionFeedback />
     </div>
   );
 }

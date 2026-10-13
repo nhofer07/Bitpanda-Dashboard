@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { PortfolioComparison } from "./AccountDataComponents.jsx";
 import AssetDetailView from "./AssetDetailView.jsx";
 import MarketHistoryChart from "./MarketHistoryChart.jsx";
 import AssetActionsPanel from "./AssetActionsPanel.jsx";
@@ -73,11 +74,11 @@ export default function AssetsView({ data, loading, error, selectedAssetKey, sel
     {loading && <div className="loading-state">Portfolio wird geladen …</div>}
     {error && <div className="error-box">{error}</div>}
     {!loading && !error && <section className="table-card"><div className="section-heading"><h3>Meine Assets</h3><span>{visible.length} Positionen</span></div><div className="assets-table-scroll"><table className="clean-table"><thead><tr><th>Asset</th><th>Aktueller Wert</th><th>Aktionen</th></tr></thead><tbody>{visible.map(asset => <tr key={asset.assetKey}><td><button className="asset-name-link" onClick={() => onSelectAsset(asset)}>{title(asset)}</button><small className="asset-cell-note">{asset.assetKey} · {categoryLabel(asset.category)}</small></td><td>{money(asset.currentValue)}</td><td><div className="asset-row-actions"><button className="secondary-button" onClick={() => onSelectAsset(asset)}>Chart & Details anzeigen</button></div></td></tr>)}</tbody></table></div>{!visible.length && <p className="assets-empty">{assets.length ? "Keine passenden Positionen im Portfolio. Die allgemeine Asset-Suche bleibt verfügbar." : "Noch keine Positionen im Portfolio. Über die Suche kannst du trotzdem Assets ansehen."}</p>}</section>}
-    {displayed ? <AssetMarketPanel key={`${displayed.symbol}:${displayed.category}`} asset={displayed} held={held} position={position} watched={watchlist.some(item => item.symbol === displayed.symbol)} onAddWatch={addToWatchlist} onRemoveWatch={removeFromWatchlist} onTradeCompleted={onTradeCompleted} /> : <section className="table-card asset-search-section"><h3>Asset für den Chart auswählen</h3><p>Suche nach einem Asset und wähle einen Treffer aus. Dafür ist keine eigene Position erforderlich.</p></section>}
+    {displayed ? <AssetMarketPanel data={data} onSelectAsset={onSelectAsset} key={`${displayed.symbol}:${displayed.category}`} asset={displayed} held={held} position={position} watched={watchlist.some(item => item.symbol === displayed.symbol)} onAddWatch={addToWatchlist} onRemoveWatch={removeFromWatchlist} onTradeCompleted={onTradeCompleted} /> : <section className="table-card asset-search-section"><h3>Asset für den Chart auswählen</h3><p>Suche nach einem Asset und wähle einen Treffer aus. Dafür ist keine eigene Position erforderlich.</p></section>}
   </div>;
 }
 
-function AssetMarketPanel({ asset, held, position, watched, onAddWatch, onRemoveWatch, onTradeCompleted }) {
+function AssetMarketPanel({ data, onSelectAsset, asset, held, position, watched, onAddWatch, onRemoveWatch, onTradeCompleted }) {
   const [quote, setQuote] = useState(null);
   const [quoteError, setQuoteError] = useState("");
   useEffect(() => {
@@ -90,10 +91,11 @@ function AssetMarketPanel({ asset, held, position, watched, onAddWatch, onRemove
     }).catch(error => { if (!controller.signal.aborted) setQuoteError(error.message); });
     return () => controller.abort();
   }, [asset.symbol, asset.category]);
+  const comparison = data?.accountInsights?.portfolio?.some(row => row.symbol === asset.symbol) && <details className="page-disclosure asset-comparison"><summary>Bitpanda-Werte für {asset.name} mit dem Dashboard vergleichen</summary><PortfolioComparison data={data} selectedSymbol={asset.symbol} onSelectAsset={onSelectAsset} /></details>;
   return <section id="asset-market-details" className="asset-market-panel" aria-label={`Kursdetails ${asset.name}`}>
     <div className="table-card asset-search-section"><div className="section-heading"><div><span className="eyebrow">{held ? "Im Portfolio" : position ? "Abgeschlossene Position" : "Marktdaten · Nicht im Portfolio"}</span><h3>{asset.name}</h3><p>{asset.symbol} · {categoryLabel(asset.category)}{asset.isin ? ` · ISIN ${asset.isin}` : ""}</p></div><div className="asset-market-summary"><span>Aktueller Kurs</span><h3>{quote ? money(quote.price) : quoteError ? "Nicht verfügbar" : "Lädt …"}</h3><button className="secondary-button" onClick={() => watched ? onRemoveWatch(asset.symbol) : onAddWatch(asset)}>{watched ? "Von Watchlist entfernen" : "Zur Watchlist hinzufügen"}</button></div></div>{quote && <p className="source-note">{quote.source} · Abruf: {new Date(quote.updatedAt).toLocaleString("de-AT")}</p>}{quoteError && <p role="status">{quoteError}</p>}</div>
     <MarketHistoryChart asset={asset} />
     <AssetActionsPanel asset={asset} held={held} currentPrice={quote?.price ?? asset.price ?? held?.currentPrice} onTradeCompleted={onTradeCompleted} />
-    {position && <AssetDetailView asset={position} embedded />}
+    {position ? <AssetDetailView asset={position} embedded>{comparison}</AssetDetailView> : comparison}
   </section>;
 }

@@ -1,3 +1,5 @@
+import { notify } from "./actionFeedback.js";
+
 const PROFIT_FEE_ADJUSTMENTS_KEY = "bitpanda-dashboard-profit-fee-adjustments";
 
 export function readProfitFeeAdjustments() {
@@ -12,8 +14,11 @@ export function readProfitFeeAdjustments() {
 export function writeProfitFeeAdjustments(entries) {
   try {
     localStorage.setItem(PROFIT_FEE_ADJUSTMENTS_KEY, JSON.stringify(entries || []));
+    notify("Eigene Finanzierungsgebühren gespeichert.", "success", "fee-notes");
+    return true;
   } catch {
-    // Fee notes remain optional if local storage is unavailable.
+    notify("Änderung übernommen, konnte aber nicht im Browser gespeichert werden. Sie bleibt nur für diese Sitzung erhalten.", "warning", "fee-notes");
+    return false;
   }
 }
 

@@ -459,3 +459,83 @@
   .dashboard-shell .asset-market-summary h3 { margin:0; }
   .dashboard-shell .asset-market-summary button { width:100%; }
 }
+
+.dashboard-shell .tax-table-scroll { overflow-x: auto; }
+.dashboard-shell .tax-note { padding: 12px 20px 20px; line-height: 1.6; }
+.dashboard-shell .tax-detail-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; padding: 0 20px 18px; }
+.dashboard-shell .tax-detail-controls label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.dashboard-shell .tax-detail-controls select { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px; max-width: 100%; }
+.dashboard-shell .tax-year-details { margin: 0 20px 16px; border: 1px solid var(--line); border-radius: 12px; }
+.dashboard-shell .tax-year-details > summary, .dashboard-shell .tax-payment-details > summary { cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px; }
+.dashboard-shell .tax-year-details > summary::before, .dashboard-shell .tax-payment-details > summary::before { content: '›'; color: var(--muted); font-size: 20px; }
+.dashboard-shell .tax-year-details[open] > summary::before, .dashboard-shell .tax-payment-details[open] > summary::before { transform: rotate(90deg); }
+.dashboard-shell .tax-year-details > summary > span, .dashboard-shell .tax-payment-details > summary > span { flex: 1; }
+.dashboard-shell .tax-payment-details { border-top: 1px solid var(--line); }
+.dashboard-shell .tax-payment-details small { display: block; margin-top: 5px; color: var(--muted); }
+.dashboard-shell .tax-payment-details tfoot td { padding: 14px 20px; border-top: 1px solid var(--line); }
+@media (max-width: 600px) {
+  .dashboard-shell .tax-year-details { margin: 0 10px 12px; }
+  .dashboard-shell .tax-detail-controls label { flex-wrap: wrap; }
+  .dashboard-shell .tax-payment-details > summary { gap: 8px; padding: 12px; font-size: 12px; }
+}
+
+.fee-detail-meta { display: block; margin-top: 4px; font-size: .75rem; color: var(--muted, #8292a6); overflow-wrap: anywhere; }
+
+.account-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 18px 0; }
+.account-tabs { margin: 20px 0; flex-wrap: wrap; }
+.account-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; }
+.account-costs-panel { margin: 20px 0; }
+@media (max-width: 760px) { .account-metrics { grid-template-columns: 1fr; } .account-tabs button { flex: 1 1 40%; } }
+
+/* Keep account explanations, filters and receipts aligned with card headings. */
+.dashboard-shell :is(.fees-view,.tax-view,.account-data-view) { display:flex; flex-direction:column; gap:20px; min-width:0; }
+.dashboard-shell :is(.fees-view,.tax-view,.account-data-view) > * { margin-block:0; min-width:0; }
+.dashboard-shell :is(.fees-view,.tax-view,.account-data-view,.asset-comparison) .table-card > p:not(.category-empty) { margin:0; padding:0 20px 20px; color:var(--muted); font-size:12px; line-height:1.7; }
+.dashboard-shell .account-costs-panel .section-heading p { margin:8px 0 0; color:var(--muted); font-size:12px; line-height:1.7; max-width:850px; }
+.dashboard-shell .account-metrics { margin:0; padding:0 20px 20px; }
+.dashboard-shell .account-metrics .metric-card { min-width:0; min-height:112px; height:auto; padding:18px; gap:10px; }
+.dashboard-shell .account-metrics .metric-card strong { font-size:25px; overflow-wrap:anywhere; }
+.dashboard-shell .account-metrics .metric-card small { font-size:11px; line-height:1.6; color:var(--muted); }
+.dashboard-shell .account-data-view > .tax-detail-controls { padding:16px 20px; }
+.dashboard-shell .tax-detail-controls { gap:12px 18px; }
+.dashboard-shell .tax-detail-controls > label { min-width:0; }
+.dashboard-shell .tax-detail-controls > .search-input { flex:1 1 280px; width:auto; min-width:0; margin:0; }
+.dashboard-shell .tax-detail-controls > span { font-size:12px; color:var(--muted); line-height:1.6; }
+.dashboard-shell .account-tabs { align-self:flex-start; max-width:100%; }
+.dashboard-shell .account-pagination { margin:0; padding:18px 20px; flex-wrap:wrap; font-size:12px; }
+.dashboard-shell .asset-comparison > .table-card { border:0; border-radius:0 0 14px 14px; margin:0; }
+.dashboard-shell .asset-comparison > summary { line-height:1.6; }
+.dashboard-shell .tax-year-details > summary { font-size:13px; }
+.dashboard-shell .tax-year-details > summary > :is(span,strong,small) { min-width:0; overflow-wrap:anywhere; }
+.dashboard-shell .tax-year-details > summary > strong { text-align:right; }
+.dashboard-shell .tax-table-scroll { min-width:0; max-width:100%; overscroll-behavior-inline:contain; }
+@media(max-width:760px) {
+  .dashboard-shell :is(.fees-view,.tax-view,.account-data-view) { gap:16px; }
+  .dashboard-shell .account-tabs { align-self:stretch; }
+  .dashboard-shell .account-tabs button { min-width:0; flex:1 1 calc(50% - 8px); }
+  .dashboard-shell .tax-detail-controls > label:has(select) { flex:1 1 180px; flex-direction:column; align-items:stretch; gap:6px; }
+  .dashboard-shell .tax-detail-controls > label:has(input[type="checkbox"]) { align-items:flex-start; flex-wrap:nowrap; line-height:1.5; }
+  .dashboard-shell .tax-detail-controls input[type="checkbox"] { flex-shrink:0; margin-top:3px; }
+  .dashboard-shell .hero-card:not(.portfolio-hero) .hero-status { display:grid; grid-template-columns:minmax(0,1fr) auto; text-align:left; }
+  .dashboard-shell .hero-card:not(.portfolio-hero) .hero-status > strong { white-space:nowrap; }
+  .dashboard-shell .hero-card:not(.portfolio-hero) .hero-status > small { grid-column:1/-1; max-width:none; }
+  .dashboard-shell .account-metrics { gap:10px; }
+  .dashboard-shell .account-metrics .metric-card { min-height:96px; padding:16px; }
+  .dashboard-shell .tax-year-details > summary { gap:10px; padding:14px 12px; }
+}
+@media(min-width:761px) {
+  .dashboard-shell .assets-view > .view-panel { display:grid; grid-template-columns:minmax(0,1fr) minmax(180px,240px); align-items:center; gap:16px; }
+  .dashboard-shell .assets-view > .view-panel .search-input { margin:0; }
+}
+.action-feedback { position: fixed; top: 16px; right: 16px; width: min(430px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; z-index: 10000; display: grid; gap: 10px; pointer-events: none; }
+.action-notice { pointer-events: auto; display: flex; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid #b9d8c8; border-left: 4px solid #21845b; border-radius: 14px; background: #f3fbf7; color: #183a2c; box-shadow: 0 8px 30px #142c2426; overflow-wrap: anywhere; }
+.action-notice.pending { background: #f0f6ff; border-color: #c4d7f0; border-left-color: #386bb7; color: #203c61; }
+.action-notice.warning { background: #fffbef; border-color: #e4d7b5; border-left-color: #aa7921; color: #57421c; }
+.action-notice.error { background: #fff4f3; border-color: #e7c7c3; border-left-color: #b7473b; color: #652b25; }
+.action-notice-icon { font-size: 22px; line-height: 1.2; }
+.action-notice > div { flex: 1; min-width: 0; }
+.action-notice strong { font-size: 14px; }
+.action-notice p { font-size: 14px; line-height: 1.5; margin: 4px 0 0; }
+.action-notice button { flex: none; border: none; background: transparent; color: inherit; font-size: 24px; padding: 0 4px; line-height: 1; cursor: pointer; }
+.action-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 12px; }
+@media (max-width: 600px) { .action-feedback { top: auto; bottom: 16px; max-height: 60vh; overflow-y: auto; } }

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { performAction } from "./actionFeedback.js";
+
 function formatNumber(value) {
   return Number(value || 0).toLocaleString("de-DE", { maximumFractionDigits: 8 });
 }
@@ -48,23 +50,20 @@ export default function AdjustmentsView() {
   }
 
   async function saveManualPositions() {
+    if (saving) return;
+    setSaving(true); setError("");
     try {
-      setSaving(true);
-      setError("");
-      const response = await fetch("/api/manual-positions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ positions: drafts })
+      await performAction({ pending: "Positionskorrekturen werden gespeichert …", success: "Positionskorrekturen gespeichert und im Dashboard übernommen.",
+        failure: "Positionskorrekturen konnten nicht gespeichert werden",
+        execute: async () => {
+          const response = await fetch("/api/manual-positions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ positions: drafts }) });
+          const json = await response.json();
+          if (!response.ok) throw new Error(json.error || "Speichern fehlgeschlagen");
+          setDrafts(json.manualPositions?.positions || {}); setDashboard(json.dashboard || dashboard);
+          return json;
+        }
       });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Positionen konnten nicht gespeichert werden");
-      setDrafts(json.manualPositions?.positions || {});
-      setDashboard(json.dashboard || dashboard);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
   function defaultDraft(asset, current = {}) {

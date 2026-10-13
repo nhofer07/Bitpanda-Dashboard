@@ -247,6 +247,8 @@ export default function PeriodOverview({ cashflowOverrides = {} }) {
         </div>
       </section>
 
+      {!summary?.paidTax?.available && <div className="info-box">Steuerbuchungen sind nicht verfügbar. Die Ergebnisse enthalten solange keinen KESt-Abzug.</div>}
+
       <div className="view-panel compact-panel">
         <div className="segmented-control">
           <button className={mode === "monthly" ? "active" : ""} onClick={() => {
@@ -313,7 +315,7 @@ export default function PeriodOverview({ cashflowOverrides = {} }) {
               <div className="period-detail-breakdown">
                 <DetailRow label="Brutto G/V" value={formatCurrency(selected.grossRealizedProfit)} tone={Number(selected.grossRealizedProfit || 0) >= 0 ? "positive" : "negative"} />
                 <DetailRow label="Trading-Gebühren" value={formatCurrency(selected.tradingFees)} tone="negative" />
-                <DetailRow label="KESt (Bitpanda/Schätzung)" value={formatCurrency(selected.estimatedTax)} tone="negative" />
+                <DetailRow label="Gebuchte KESt" value={summary?.paidTax?.available ? formatCurrency(selected.estimatedTax) : "Nicht verfügbar"} tone={Number(selected.estimatedTax || 0) < 0 ? "positive" : "negative"} />
                 <DetailRow label="Dividenden brutto" value={formatCurrency(selected.dividendGross)} tone={Number(selected.dividendGross || 0) >= 0 ? "positive" : "negative"} />
                 <DetailRow label="Quellensteuer" value={formatCurrency(selected.dividendTax)} tone={Number(selected.dividendTax || 0) < 0 ? "negative" : ""} />
                 <DetailRow label="Dividendbuchungen" value={selected.dividendCount} />
@@ -378,7 +380,7 @@ export default function PeriodOverview({ cashflowOverrides = {} }) {
                       <div key={item.id} className="period-dividend-item">
                         <span>
                           <strong>{item.asset || item.assetKey || "-"}</strong>
-                          <small>{formatDate(item.date)} · Brutto {formatCurrency(item.grossRealizedProfit)} · Gebühren {formatCurrency(item.tradingFee)} · {item.taxSource === "bitpanda_withheld" ? "Bitpanda KESt" : "geschätzte KESt"} {formatCurrency(item.estimatedTax)}</small>
+                          <small>{formatDate(item.date)} · Brutto {formatCurrency(item.grossRealizedProfit)} · Gebühren {formatCurrency(item.tradingFee)} · {item.taxSource === "bitpanda_bookings" ? "Gebuchte KESt" : "KESt nicht verfügbar"} {formatCurrency(item.estimatedTax)}</small>
                         </span>
                         <strong className={amount >= 0 ? "positive" : "negative"}>{formatCurrency(amount)}</strong>
                       </div>

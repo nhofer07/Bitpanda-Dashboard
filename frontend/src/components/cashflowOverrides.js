@@ -21,7 +21,8 @@ export function readCashflowOverrides() {
 export function writeCashflowOverrides(overrides) {
   try {
     localStorage.setItem(CASHFLOW_OVERRIDES_KEY, JSON.stringify(overrides || {}));
+    return true;
   } catch {
-    // Local corrections are a convenience feature; the app should keep running without storage.
+    return false;
   }
 }

@@ -46,6 +46,31 @@ ausgeschaltet, bleibt die zeitliche Lücke erhalten und die datierten Messpunkte
 und nach der Pause werden gerade verbunden. Eine rückwirkende Rekonstruktion wäre
 wegen fehlender historischer Wallet- und Cash-Stände nicht zuverlässig.
 
+## Gebühren, Steuern und Kontodaten
+
+**Gebühren** zeigt die Gebühr jedes abgeschlossenen Trades und zusätzliche
+Kostenbuchungen aus Hebelpositionen, Earn/Staking und Transfers. Ein eigener
+Gebührenbeleg und das Gebührenfeld desselben Trades zählen zusammen nur einmal.
+Gebühren in Coins bleiben in der Originaleinheit; die Eurosumme verwendet nur
+vorhandene API-Eurobeträge. Sie ist bei fehlenden Eurobewertungen keine vollständige
+Gesamtkostensumme. Manuelle Finanzierungsgebühren in der Gewinnansicht bleiben
+separate eigene Eingaben.
+
+**Steuern** zeigt gebuchte KESt nach Erstattungen und bezahlten Nachforderungen.
+Quellensteuer steht separat mit ihren Einzelbuchungen. Jahre mit Kontohistorie ohne
+Steuerbuchungen erscheinen ausdrücklich mit null. Eine selbst zu erklärende
+Steuerpflicht wird nicht berechnet.
+
+**Kontodaten** ergänzt Erträge aus Staking, passivem Earn, Cash Plus und Boni,
+den Buchungsverlauf mit Bestand nach jeder Buchung, Sonderereignisse sowie den
+Vergleich von Bitpandas eigenen Portfolio-Kennzahlen mit der Dashboard-Rekonstruktion.
+Bruttoertrag minus gemeldete Gebühr ergibt den Ertrag nach Gebühr; unterschiedliche
+Coins werden nicht in einer gemeinsamen Geldsumme addiert. Bereits gebuchte Erträge
+werden nicht nochmals zum Portfoliowert addiert.
+Der Bestandsabgleich bleibt bei fehlenden Werten, API-Platzhaltern oder unvollständigen
+Buchungsfolgen ungeprüft. Nicht verfügbare aktuelle Hebelpositionen werden ausdrücklich
+gekennzeichnet; ihre historischen Buchungen können trotzdem verfügbar sein.
+
 ## Private Daten und Weitergabe
 
 Keys liegen in `~/.bitpanda-dashboard/credentials.json`, außerhalb des Projektordners,

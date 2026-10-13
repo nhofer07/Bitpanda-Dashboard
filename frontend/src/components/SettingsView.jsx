@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { updateBrowserCredentials } from "./browserCredentials.js";
 
+import { notify } from "./actionFeedback.js";
+
 export default function SettingsView({ onSaved }) {
   const [status, setStatus] = useState(null);
   const [bitpanda, setBitpanda] = useState("");
@@ -19,7 +21,8 @@ export default function SettingsView({ onSaved }) {
     }).catch(err => setError(err.message));
   }, []);
   async function save(event) {
-    event.preventDefault(); setBusy(true); setError("");
+    event.preventDefault(); if (busy) return; setBusy(true); setError("");
+    const feedbackId = notify("Einstellungen werden gespeichert …", "pending");
     try {
       const values = {};
       if (removeBitpanda || bitpanda.trim()) values.bitpanda = removeBitpanda ? "" : bitpanda.trim();
@@ -35,13 +38,22 @@ export default function SettingsView({ onSaved }) {
       }
       if (!response.ok) throw new Error(data.error || "Speichern fehlgeschlagen.");
       if (data.credentialsStorage === "memory") updateBrowserCredentials(values);
-      setBitpanda(""); setFinnhub(""); setFusion(""); onSaved();
-    } catch (err) { setError(err.message); }
+      setBitpanda(""); setFinnhub(""); setFusion("");
+      notify("Einstellungen gespeichert. Die Verbindungen werden neu geladen.", "success", feedbackId);
+      try { sessionStorage.setItem("dashboard-settings-saved", "1"); } catch {}
+      onSaved();
+    } catch (err) { setError(err.message); notify(`Einstellungen konnten nicht gespeichert werden: ${err.message}`, "error", feedbackId); }
     finally { setBusy(false); }
   }
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.location.reload();
+    if (busy) return;
+    setBusy(true);
+    const feedbackId = notify("Du wirst abgemeldet …", "pending");
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("Abmelden fehlgeschlagen. Bitte erneut versuchen.");
+      window.location.reload();
+    } catch (err) { notify(err.message, "error", feedbackId); setBusy(false); }
   }
   return <div className="settings-view">
     <section className="hero-card settings-hero"><div><div className="eyebrow">Einrichtung & Sicherheit</div><h2>Verbindungen verwalten</h2><p>Hier steuerst du, welche externen Daten dein persönliches Dashboard verwenden darf.</p></div><div className="settings-hero-status"><span className={status?.bitpandaConfigured ? "ready" : "missing"} /> <strong>{status?.bitpandaConfigured ? "Dashboard verbunden" : "Einrichtung offen"}</strong><small>Bitpanda API</small></div></section>

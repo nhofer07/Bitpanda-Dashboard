@@ -1877,7 +1877,7 @@ body::before {
 /* Vertikaler Seitenrhythmus gilt für View-Container, nie für ihre Raster-Kacheln.
    Ohne diese Ausnahmen erhielten alle Grid-Elemente ab dem zweiten einen
    zusätzlichen oberen Abstand und wirkten dadurch versetzt. */
-.app-content > div:not(.portfolio-home):not(.fusion-view):not(.stats-grid):not(.top-grid):not(.chart-grid):not(.dashboard-grid):not(.split-grid):not(.overview-grid):not(.ranking-grid):not(.allocation-layout) > * + * {
+.app-content > div:not(.portfolio-home):not(.fusion-view):not(.fees-view):not(.tax-view):not(.account-data-view):not(.stats-grid):not(.top-grid):not(.chart-grid):not(.dashboard-grid):not(.split-grid):not(.overview-grid):not(.ranking-grid):not(.allocation-layout) > * + * {
   margin-top: var(--page-gap);
 }
 

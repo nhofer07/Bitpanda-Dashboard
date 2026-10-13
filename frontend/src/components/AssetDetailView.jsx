@@ -34,7 +34,7 @@ function assetSymbol(asset) {
   return asset?.assetKey || asset?.name || "-";
 }
 
-export default function AssetDetailView({ asset, onBack, embedded = false }) {
+export default function AssetDetailView({ asset, onBack, embedded = false, children }) {
   if (!asset) {
     return (
       <div className="empty-state">
@@ -107,6 +107,9 @@ export default function AssetDetailView({ asset, onBack, embedded = false }) {
         </section>
       </div>
 
+      {Number(asset.unmatchedSoldQuantity || 0) > 0.00000002 && <div className="warning-box">Für einen Teil der Verkäufe fehlt die Kaufkostenbasis in der Trade-Historie. Das berechnete Ergebnis kann durch Rewards, Transfers oder fehlende Käufe abweichen.</div>}
+      {children}
+
       <section className="table-card">
         <div className="section-heading">
           <h3>Trade-Historie</h3>
@@ -142,9 +145,9 @@ export default function AssetDetailView({ asset, onBack, embedded = false }) {
                   <td>{trade.price || "-"}</td>
                   <td>{Number(trade.tradingFee || 0) > 0 ? formatCurrency(trade.tradingFee) : "-"}</td>
                   <td>
-                    {trade.type !== "sell" || trade.estimatedTax == null ? "-" : <>
+                    {trade.type !== "sell" || trade.estimatedTax == null || trade.taxSource === "unavailable" ? "-" : <>
                       {formatCurrency(trade.estimatedTax)}
-                      <small className="trade-tax-source">{trade.taxSource === "bitpanda_withheld" ? "Bitpanda" : "Schätzung"}</small>
+                      <small className="trade-tax-source">{trade.taxSource === "bitpanda_bookings" ? "Nach Erstattung" : "Nicht verfügbar"}</small>
                     </>}
                   </td>
                   <td className={profit == null ? "muted" : profit >= 0 ? "positive strong" : "negative strong"}>

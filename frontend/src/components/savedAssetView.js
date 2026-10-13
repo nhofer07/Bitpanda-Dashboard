@@ -1,3 +1,5 @@
+import { notify } from "./actionFeedback.js";
+
 export const SAVED_ASSET_VIEW_KEY = "bitpandaHiddenProfitLossAssets";
 
 export function readHiddenAssets() {
@@ -11,7 +13,10 @@ export function readHiddenAssets() {
 }
 
 export function writeHiddenAssets(assetKeys) {
-  localStorage.setItem(SAVED_ASSET_VIEW_KEY, JSON.stringify([...new Set(assetKeys.map(String))]));
+  try {
+    localStorage.setItem(SAVED_ASSET_VIEW_KEY, JSON.stringify([...new Set(assetKeys.map(String))]));
+    notify("Gespeicherte Asset-Ansicht aktualisiert.", "success", "saved-assets");
+  } catch { notify("Asset-Ansicht geändert, konnte aber nicht im Browser gespeichert werden.", "warning", "saved-assets"); }
 }
 
 export function hideAssetKey(assetKey, hiddenAssets) {

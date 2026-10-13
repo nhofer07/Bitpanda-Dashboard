@@ -134,6 +134,7 @@ export default function PortfolioHome({ data, loading, error, refreshing, onRefr
         />
         <Metric title="Fiat Netto" value={formatCurrency(adjustedFiatNet)} />
         <Metric title="Dividenden" value={formatCurrency(portfolio.dividends)} />
+        <Metric title="Bezahlte KESt aus Verkäufen" value={data?.paidTax?.available ? formatCurrency(data.paidTax.salesPaid) : "Nicht verfügbar"} secondary="Alle Jahre · nach Erstattungen" />
       </div>
 
       {data?.portfolioHistoryWarning && <div className="warning-box" role="status">Chart-Aufzeichnung pausiert: {data.portfolioHistoryWarning} Der Verlauf zeigt die zuletzt vollständig erfassten Werte.</div>}

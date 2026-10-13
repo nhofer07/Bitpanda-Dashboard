@@ -214,8 +214,8 @@ run_remote "$REMOTE_PATH && C=\"\$(command -v docker-compose)\" && sudo \"\$C\" 
 progress 'Container von Josi neu bauen'
 run_remote "$REMOTE_PATH && C=\"\$(command -v docker-compose)\" && sudo \"\$C\" --env-file .env.josi -p bitpanda-josi up -d --build"
 
-progress 'Containerstatus prüfen und abschließen'
-run_remote "$REMOTE_PATH && D=\"\$(command -v docker)\" && sudo \"\$D\" ps --filter 'name=bitpanda-dashboard' --format '{{.Names}}' | grep -q 'bitpanda-dashboard-nico' && sudo \"\$D\" ps --filter 'name=bitpanda-dashboard' --format '{{.Names}}' | grep -q 'bitpanda-dashboard-josi'"
+progress 'Erreichbarkeit beider Container prüfen'
+run_remote "$REMOTE_PATH && D=\"\$(command -v docker)\" && for N in bitpanda-dashboard-nico bitpanda-dashboard-josi; do I=0; while true; do S=\"\$(sudo \"\$D\" inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' \"\$N\")\" || exit 1; case \"\$S\" in 'running healthy') break ;; *unhealthy*|exited*|dead*|restarting*) sudo \"\$D\" logs --tail 20 \"\$N\"; exit 1 ;; esac; I=\$((I + 1)); if [ \"\$I\" -ge 60 ]; then sudo \"\$D\" logs --tail 20 \"\$N\"; exit 1; fi; sleep 2; done; done"
 CURRENT_STEP=$TOTAL_STEPS
 CURRENT_LABEL='Fertig'
 draw_progress '  ✓'

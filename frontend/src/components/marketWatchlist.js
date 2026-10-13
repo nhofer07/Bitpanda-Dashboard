@@ -1,3 +1,5 @@
+import { notify } from "./actionFeedback.js";
+
 export const MARKET_WATCHLIST_KEY = "bitpanda-dashboard-market-watchlist";
 
 export function readMarketWatchlist() {
@@ -12,8 +14,11 @@ export function readMarketWatchlist() {
 export function writeMarketWatchlist(items) {
   try {
     localStorage.setItem(MARKET_WATCHLIST_KEY, JSON.stringify(items));
+    notify("Watchlist gespeichert.", "success", "watchlist");
+    return true;
   } catch {
-    // The watchlist remains usable for the current session without storage.
+    notify("Änderung übernommen, konnte aber nicht im Browser gespeichert werden. Sie bleibt nur für diese Sitzung erhalten.", "warning", "watchlist");
+    return false;
   }
 }
 

@@ -5,6 +5,11 @@ import { localPortfolioPreview } from "./local-preview.js";
 import { loadAssetCatalog, searchCatalog } from "./asset-search.js";
 import { loadMarketHistory, resolveMarketSymbol, normalizeMarketUnit, HISTORY_RANGES } from "./market-history.js";
 import { cleanUuid } from "./id-validation.js";
+import { buildFusionOrder, requestFusion } from "./fusion-orders.js";
+import { fetchPublicPages } from "./public-pagination.js";
+import { buildAccountInsights } from "./account-insights.js";
+import { calculatePaidTax } from "./paid-tax.js";
+import { reportedTradeFee, tradeValueBeforeFee, enrichTradesWithBookedFees, allocateSalePurchaseFees } from "./trade-amounts.js";
 import express from "express";
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import dotenv from "dotenv";
@@ -230,15 +235,13 @@ app.use((req, res, next) => authenticated(req) ? next() : res.status(401).json({
 const PORT = Number(process.env.PORT || 3001);
 const BASE_URL = "https://api.bitpanda.com/v1";
 const PUBLIC_BASE_URL = "https://api.public.bitpanda.com/v1";
-const FUSION_BASE_URL = "https://api.fusion.bitpanda.com/v1";
 const TICKER_URL = "https://developer.bitpanda.com/v1/ticker";
 const PRICE_CACHE_MS = 60 * 1000;
 const DASHBOARD_CACHE_MS = 5 * 60 * 1000;
 const BACKGROUND_REFRESH_MS = 60 * 1000;
-const DASHBOARD_CALCULATION_VERSION = 12;
+const DASHBOARD_CALCULATION_VERSION = 17;
 const SNAPSHOT_MIN_INTERVAL_MS = 55 * 1000;
 const DEFAULT_TRADE_FEE_EUR = 1;
-const CAPITAL_GAINS_TAX_RATE = 0.275;
 const FIXED_TRADE_FEE_START_UNIX = Date.parse("2026-01-29T00:00:00+01:00") / 1000;
 let CACHE_DIR = path.join(accountDir(), ".cache");
 let DASHBOARD_CACHE_FILE = path.join(CACHE_DIR, "dashboard-data.json");
@@ -392,14 +395,7 @@ async function publicApiRequest(endpoint, { method = "GET", params = {}, body } 
 }
 
 async function fusionRequest(endpoint, { method = "GET", params = {}, body } = {}) {
-  if (!fusionApiKey) { const error = new Error("Bitte zuerst den Fusion API-Key in den Einstellungen hinterlegen."); error.status = 401; throw error; }
-  const url = new URL(`${FUSION_BASE_URL}${endpoint}`);
-  for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
-  const response = await fetch(url, { method, headers: { "X-Api-Key": fusionApiKey, "X-Client-Origin": "bitpanda-dashboard", Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
-  const text = await response.text();
-  let payload = null; try { payload = text ? JSON.parse(text) : null; } catch { payload = { message: text }; }
-  if (!response.ok) { const error = new Error(`Bitpanda Fusion: ${payload?.message || payload?.error || `HTTP ${response.status}`}`); error.status = response.status; throw error; }
-  return payload;
+  return requestFusion(endpoint, { apiKey: fusionApiKey, method, params, body });
 }
 
 function fusionPair(value) {
@@ -409,17 +405,7 @@ function fusionPair(value) {
 }
 
 async function fetchPublicPaginated(endpoint, params = {}, maxItems = 500) {
-  const result = [];
-  let cursor = "";
-  const seenCursors = new Set();
-  do {
-    const payload = await publicApiRequest(endpoint, { params: { ...params, page_size: Math.min(100, maxItems), cursor } });
-    result.push(...(Array.isArray(payload.data) ? payload.data : []));
-    cursor = payload.has_next_page ? payload.next_cursor || "" : "";
-    if (cursor && seenCursors.has(cursor)) throw new Error("Bitpanda Public API lieferte einen wiederholten Seitenzeiger.");
-    if (cursor) seenCursors.add(cursor);
-  } while (cursor && result.length < maxItems);
-  return result.slice(0, maxItems);
+  return fetchPublicPages(publicApiRequest, endpoint, params, maxItems);
 }
 
 async function getPublicEurCurrencyId() {
@@ -893,11 +879,11 @@ async function fetchLeveragePositions() {
     const response = await fetch(`${BASE_URL}/leverage/positions`, {
       headers: { "X-Api-Key": apiKey, Accept: "application/json" }
     });
-    if (!response.ok) return [];
+    if (!response.ok) return Object.assign([], { status: { available: false, message: `Aktuelle Hebelpositionen sind über deinen API-Key derzeit nicht verfügbar. Historische Hebelbuchungen sind im Buchungsverlauf sichtbar.` } });
     const data = await response.json();
-    return (data.data || []).map(normalizeLeveragePosition).filter(Boolean);
+    return Object.assign((data.data || []).map(normalizeLeveragePosition).filter(Boolean), { status: { available: true } });
   } catch {
-    return [];
+    return Object.assign([], { status: { available: false, message: "Aktuelle Hebelpositionen konnten nicht geladen werden. Historische Buchungen bleiben verfügbar." } });
   }
 }
 
@@ -1199,7 +1185,7 @@ function applyManualPositions(openPositions, profitLoss, manualPositions) {
 }
 
 function createPortfolioSummary({ transactions, fiatPeriods, profitLoss, openPositions, priceSummary, liquidBalance }) {
-  const realizedProfit = getRealizedProfitTotal(profitLoss.assets || []);
+  const realizedProfit = getRealizedProfitTotal(profitLoss.assets || []) - Number(profitLoss.unallocatedTaxAdjustment || 0);
   const fiatNet = getFiatTotal(fiatPeriods.yearly || []);
   const dividends = getDividendTotal(fiatPeriods.yearly || []);
   const investedValue = Number(priceSummary.marketValue || 0);
@@ -1288,6 +1274,7 @@ function ensureDashboardAssetMetadata(dashboardData) {
   return {
     ...dashboardData,
     profitLoss,
+    paidTax: profitLoss.paidTax,
     openPositions,
     portfolio: dashboardData.portfolio
       ? {
@@ -1355,7 +1342,7 @@ function appendPortfolioSnapshot(cache, dashboardData) {
     return snapshots;
   }
 
-  return compactPortfolioSnapshots([
+  return compactPortfolioSnapshots(excludeCorrectedSnapshots([
     ...snapshots,
     {
       createdAt: dashboardData.loadedAt,
@@ -1364,7 +1351,7 @@ function appendPortfolioSnapshot(cache, dashboardData) {
       unrealizedProfit: dashboardData.portfolio.unrealizedProfit,
       openPositionCount: dashboardData.portfolio.openPositionCount
     }
-  ], now);
+  ]), now);
 }
 
 function compactPortfolioSnapshots(snapshots, now = Date.now()) {
@@ -1397,7 +1384,7 @@ async function buildDashboardData(previousCache = null) {
   ]);
   // Bitpanda flags recurring-plan deposits, but not always the buy that follows.
   // Pass those deposits along so the profit calculation can identify the matching buy.
-  const profitLoss = await fetchProfitLoss(transactions);
+  const { accountInputs, ...profitLoss } = await fetchProfitLoss(transactions, { includeAccountInputs: true });
   const fiatPeriods = calculateFiatPeriods(transactions, dividends);
   let fiatWallets = [];
   let openPositions = profitLoss.openPositions || [];
@@ -1456,6 +1443,15 @@ async function buildDashboardData(previousCache = null) {
     console.error(error);
   }
 
+  let accountInsights = { available: false, error: "Zusätzliche Kontodaten konnten nicht aus der API geladen werden." };
+  if (accountInputs) {
+    try {
+      accountInsights = buildAccountInsights(accountInputs.operations, { ...accountInputs, cryptoTransactions: custodyTransactions });
+    } catch (error) {
+      console.error(error);
+      accountInsights.error = "Kontobuchungen konnten nicht vollständig ausgewertet werden.";
+    }
+  }
   const investedOpenPositions = pricedOpenPositions.filter(position => !isCashPlusPosition(position));
   const priceSummary = summarizeOpenPositions(investedOpenPositions);
   const liquidBalance = summarizeLiquidBalance(fiatWallets, pricedOpenPositions, walletBalances);
@@ -1477,6 +1473,7 @@ async function buildDashboardData(previousCache = null) {
     dividends,
     fiat: fiatPeriods,
     profitLoss,
+    paidTax: profitLoss.paidTax,
     openPositions: investedOpenPositions,
     warnings: profitLoss.warnings || [],
     priceSummary,
@@ -1488,6 +1485,8 @@ async function buildDashboardData(previousCache = null) {
     manualPositions,
     reservedPositions,
     leveragePositions,
+    leverageStatus: leveragePositions.status || { available: true },
+    accountInsights,
     fiatWallets,
     snapshots: []
   };
@@ -2247,13 +2246,11 @@ function getTradeAmountFiat(trade) {
 function getTradeFee(trade, category, quantity, fiat, isSavingsExecution = false) {
   const attributes = trade.attributes || {};
 
-  // Bitpanda's recurring-plan deposits are the source of truth. Savings-plan
-  // executions are fee-free, even when the trade payload contains a stale or
-  // inconsistent fee value.
-  if (isSavingsExecution || attributes.is_savings === true) return 0;
+  const reportedFee = reportedTradeFee(trade);
+  if (reportedFee != null) return reportedFee;
 
-  const reportedFee = Math.abs(Number(attributes.fee || 0));
-  if (reportedFee > 0) return reportedFee;
+  // Savings matching is only a fallback when neither API supplied a fee.
+  if (isSavingsExecution || attributes.is_savings === true) return 0;
 
   // Bitpanda's amount_fiat is the amount debited/credited after the fee, while
   // price × quantity is the trade value before the fee. Prefer this exact
@@ -2268,30 +2265,7 @@ function getTradeFee(trade, category, quantity, fiat, isSavingsExecution = false
 }
 
 function getTradeValueBeforeFee(trade, quantity, fiat, fee) {
-  const price = Number(trade.attributes?.price || 0);
-  const fromPrice = price * Number(quantity || 0);
-  if (Number.isFinite(fromPrice) && fromPrice > 0) return fromPrice;
-
-  const type = String(trade.attributes?.type || "").toLowerCase();
-  return type === "buy" ? Math.max(0, Number(fiat || 0) - fee) : Number(fiat || 0) + fee;
-}
-
-function getWithheldTax(trade) {
-  const attributes = trade.attributes || {};
-  const candidates = [
-    attributes.withheld_tax,
-    attributes.withheld_tax_amount,
-    attributes.tax_amount,
-    attributes.capital_gains_tax,
-    attributes.tax
-  ];
-
-  for (const candidate of candidates) {
-    const value = Math.abs(Number(candidate));
-    if (Number.isFinite(value) && value > 0) return value;
-  }
-
-  return null;
+  return tradeValueBeforeFee(trade, quantity, fiat, fee);
 }
 
 function dateFromUnix(unix) {
@@ -2354,7 +2328,7 @@ function addPeriod(map, key, defaults = {}) {
   return map.get(key);
 }
 
-function calculateRealizedProfit(trades, savingsTransactions = []) {
+function calculateRealizedProfit(trades, savingsTransactions = [], paidTax = { available: false }) {
   const sorted = trades
     .filter(trade => (trade.attributes?.status || "").toLowerCase() === "finished")
     .filter(trade => ["buy", "sell"].includes((trade.attributes?.type || "").toLowerCase()))
@@ -2442,6 +2416,7 @@ function calculateRealizedProfit(trades, savingsTransactions = []) {
         fiat,
         tradeValueBeforeFee,
         tradingFee: tradeFee,
+        feeSource: reportedTradeFee(trade) != null ? (attributes.dashboardFeeSource || 'trades') : 'calculated',
         isSavings,
         price: attributes.price || null,
         realizedProfit: null,
@@ -2453,16 +2428,17 @@ function calculateRealizedProfit(trades, savingsTransactions = []) {
 
     if (type === "sell") {
       const avgCost = asset.currentQuantity > 0 ? asset.costBasis / asset.currentQuantity : 0;
-      const avgFeeCost = asset.currentQuantity > 0 ? asset.feeCostBasis / asset.currentQuantity : 0;
       const costOfSoldQuantity = avgCost * quantity;
-      const allocatedBuyFee = avgFeeCost * quantity;
+      const { allocatedBuyFee, unmatchedQuantity } = allocateSalePurchaseFees(quantity, asset.currentQuantity, asset.feeCostBasis);
+      asset.unmatchedSoldQuantity = Number(asset.unmatchedSoldQuantity || 0) + unmatchedQuantity;
       const grossProfit = tradeValueBeforeFee - costOfSoldQuantity;
       const tradingFee = allocatedBuyFee + tradeFee;
       const profitBeforeTax = grossProfit - tradingFee;
-      const withheldTax = getWithheldTax(trade);
-      const estimatedTax = category === "crypto"
-        ? 0
-        : withheldTax ?? Math.max(0, profitBeforeTax * CAPITAL_GAINS_TAX_RATE);
+      const hasTaxData = paidTax.available && Object.hasOwn(paidTax.tradeTaxes, trade.id);
+      // Kept as a compatibility field for existing views; it now contains only
+      // booked tax after directly linked refunds, never a 27.5% estimate.
+      const estimatedTax = hasTaxData ? paidTax.tradeTaxes[trade.id] : 0;
+      const taxSource = hasTaxData ? "bitpanda_bookings" : "unavailable";
       const profit = profitBeforeTax - estimatedTax;
 
       asset.realizedProfit += profit;
@@ -2478,8 +2454,8 @@ function calculateRealizedProfit(trades, savingsTransactions = []) {
       const month = monthKeyFromItem(trade);
       const year = yearKeyFromItem(trade);
 
-      addProfitToPeriod(monthlyMap, month, grossProfit, tradingFee, estimatedTax, profit, fiat);
-      addProfitToPeriod(yearlyMap, year, grossProfit, tradingFee, estimatedTax, profit, fiat);
+      addProfitToPeriod(monthlyMap, month, grossProfit, tradingFee, 0, profitBeforeTax, fiat);
+      addProfitToPeriod(yearlyMap, year, grossProfit, tradingFee, 0, profitBeforeTax, fiat);
 
       asset.trades.push({
         id: trade.id,
@@ -2489,10 +2465,12 @@ function calculateRealizedProfit(trades, savingsTransactions = []) {
         tradeValueBeforeFee,
         grossRealizedProfit: grossProfit,
         tradingFee: tradeFee,
+        feeSource: reportedTradeFee(trade) != null ? (attributes.dashboardFeeSource || 'trades') : 'calculated',
         isSavings,
         allocatedBuyFee,
+        unmatchedQuantity,
         estimatedTax,
-        taxSource: withheldTax == null ? "estimated" : "bitpanda_withheld",
+        taxSource,
         price: attributes.price || null,
         realizedProfit: profit,
         costBasisSold: costOfSoldQuantity,
@@ -2511,9 +2489,22 @@ function calculateRealizedProfit(trades, savingsTransactions = []) {
         grossRealizedProfit: grossProfit,
         tradingFee,
         estimatedTax,
-        taxSource: withheldTax == null ? "estimated" : "bitpanda_withheld",
+        taxSource,
         realizedProfit: profit
       });
+    }
+  }
+
+  // Refunds and payments belong to their actual booking month/year, including
+  // general corrections that Bitpanda does not assign to a particular asset.
+  for (const event of paidTax.events || []) {
+    if (event.category !== "sales") continue;
+    const parts = new Intl.DateTimeFormat("en", { timeZone: "Europe/Vienna", year: "numeric", month: "2-digit" }).formatToParts(new Date(event.date));
+    const month = `${event.year}-${parts.find(part => part.type === "month").value}`;
+    for (const [map, key] of [[monthlyMap, month], [yearlyMap, event.year]]) {
+      const period = addPeriod(map, key, { realizedProfit: 0, grossRealizedProfit: 0, tradingFees: 0, estimatedTax: 0, soldFiat: 0, sellCount: 0 });
+      period.estimatedTax += event.amount;
+      period.realizedProfit -= event.amount;
     }
   }
 
@@ -2541,15 +2532,19 @@ function calculateRealizedProfit(trades, savingsTransactions = []) {
   const categorySummary = summarizeProfitLossByCategory(assetsArray);
 
   const warnings = assetsArray
-    .filter(asset => Number(asset.sellCount || 0) > 0 && Number(asset.buyCount || 0) === 0)
+    .filter(asset => Number(asset.unmatchedSoldQuantity || 0) > 0.00000002)
     .map(asset => ({
       type: "possible_missing_buy_history",
       asset: asset.name,
-      message: "Verkauf gefunden, aber keine Kaufhistorie im geladenen Zeitraum gefunden."
+      message: "Für einen Teil der verkauften Menge fehlt eine Kaufkostenbasis in der Handelshistorie (z. B. Rewards oder Transfers). Das berechnete Ergebnis kann deshalb abweichen."
     }));
 
   return {
     assets: assetsArray,
+    paidTax,
+    unallocatedTaxAdjustment: paidTax.available
+      ? paidTax.salesPaid - assetsArray.reduce((sum, asset) => sum + asset.estimatedTax, 0)
+      : 0,
     realizedTrades: realizedTrades.sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))),
     openPositions,
     categorySummary,
@@ -2715,20 +2710,43 @@ function calculateFiatPeriods(transactions, dividends = []) {
   };
 }
 
-async function fetchProfitLoss(savingsTransactions = []) {
-  const buys = await fetchPaginated("/trades", { type: "buy" });
-  const sells = await fetchPaginated("/trades", { type: "sell" });
-  const trades = uniqueById([...buys, ...sells]);
-  const profitLoss = calculateRealizedProfit(trades, savingsTransactions);
+async function fetchProfitLoss(savingsTransactions = [], { includeAccountInputs = false } = {}) {
+  const [buys, sells] = await Promise.all([
+    fetchPaginated("/trades", { type: "buy" }),
+    fetchPaginated("/trades", { type: "sell" })
+  ]);
+  let trades = uniqueById([...buys, ...sells]);
+  let paidTax;
+  let accountInputs;
+  try {
+    const [operations, eurCurrencyId] = await Promise.all([
+      fetchPublicPaginated("/operations", {}, Number.POSITIVE_INFINITY),
+      getPublicEurCurrencyId()
+    ]);
+    paidTax = calculatePaidTax(operations, { eurCurrencyId, trades });
+    trades = enrichTradesWithBookedFees(trades, operations, eurCurrencyId);
+    if (includeAccountInputs) {
+      const results = await Promise.allSettled([
+        loadPublicAssetCatalog(), publicApiRequest("/currencies"), publicApiRequest("/portfolio"),
+        fetchPaginated("/fiatwallets/transactions", { status: "finished" })
+      ]);
+      const value = (index, fallback) => results[index].status === 'fulfilled' ? results[index].value : fallback;
+      accountInputs = { operations, eurCurrencyId, trades, assets: value(0, []), currencies: value(1, {}).data || [], portfolio: value(2, {}).data || [], fiatTransactions: value(3, []), portfolioError: results[2].status === 'rejected' ? 'Bitpanda-Portfolio konnte nicht geladen werden.' : null, metadataErrors: results.flatMap((r, i) => r.status === 'rejected' ? [`${['Assetnamen', 'Währungen', 'Portfolio', 'Fiat-Belege'][i]} konnten nicht geladen werden.`] : []) };
+    }
+  } catch {
+    paidTax = { available: false, error: "Bezahlte KESt konnte nicht vollständig aus den Bitpanda-Buchungen geladen werden." };
+  }
+  const profitLoss = calculateRealizedProfit(trades, savingsTransactions, paidTax);
 
   try {
     const tickerPrices = await fetchTickerPrices((profitLoss.assets || []).map(asset => asset.assetKey || asset.name));
-    return enrichProfitLossWithTickerMetadata(profitLoss, tickerPrices);
+    return { ...enrichProfitLossWithTickerMetadata(profitLoss, tickerPrices), accountInputs };
   } catch (error) {
     console.error(error);
 
     return {
       ...profitLoss,
+      accountInputs,
       metadataError: error.message
     };
   }
@@ -2863,13 +2881,7 @@ app.get("/fusion/candles/:pair", async (req, res) => {
 
 app.post("/fusion/orders", async (req, res) => {
   try {
-    if (req.body?.confirmation !== "FUSION HANDELN") throw new Error("Bitte die Fusion-Handelsbestätigung exakt eingeben.");
-    const side = String(req.body?.side || "").toLowerCase(); const type = String(req.body?.type || "").toLowerCase();
-    if (!["buy", "sell"].includes(side) || !["market", "limit"].includes(type)) throw new Error("Ungültige Order-Art.");
-    const body = { pair: fusionPair(req.body?.pair), side, type };
-    if (req.body?.amount) body.amount = cleanDecimal(req.body.amount, "Betrag");
-    else body.quantity = cleanDecimal(req.body?.quantity, "Menge");
-    if (type === "limit") body.limitPrice = cleanDecimal(req.body?.limitPrice, "Limitpreis");
+    const body = buildFusionOrder(req.body);
     res.json(await fusionRequest("/account/orders", { method: "POST", body }));
   } catch (error) { res.status(error.status || 400).json({ error: error.message }); }
 });
@@ -3072,6 +3084,7 @@ app.get("/dashboard-summary", async (req, res) => {
 
     res.json({
       fiat,
+      paidTax: dashboard.paidTax,
       dividendDetails: normalizeDividendDetails(dashboard.dividends || []),
       profitLoss: {
         monthly: dashboard.profitLoss.monthly,

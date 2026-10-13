@@ -1,12 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { SourceTaxPanel } from "./AccountDataComponents.jsx";
+import { paidTaxRecords } from "./paidTaxDetails.js";
 
-const TAX_RATE = 0.275;
 const eur = value => `${Number(value || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+const date = value => new Date(value).toLocaleString("de-AT", { timeZone: "Europe/Vienna", dateStyle: "medium", timeStyle: "short" });
+const kinds = { withholding: "Steuerabzug", refund: "Steuererstattung / Storno", settlement: "Nachforderung bezahlt" };
 
-export default function TaxCockpitView() {
+export default function TaxCockpitView({ onSelectAsset }) {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showRefunded, setShowRefunded] = useState(false);
+  const [category, setCategory] = useState("sales");
 
   useEffect(() => {
     fetch("/api/dashboard-data")
@@ -19,30 +24,40 @@ export default function TaxCockpitView() {
       .finally(() => setLoading(false));
   }, []);
 
-  const years = useMemo(() => {
-    const profits = new Map((dashboard?.profitLoss?.yearly || []).map(item => [item.period, item]));
-    const fiat = new Map((dashboard?.fiat?.yearly || []).map(item => [item.period, item]));
-    return [...new Set([...profits.keys(), ...fiat.keys()])].sort((a, b) => String(b).localeCompare(String(a))).map(year => {
-      const profit = profits.get(year) || {};
-      const dividends = fiat.get(year) || {};
-      const realizedBeforeTax = Number(profit.grossRealizedProfit || 0) - Number(profit.tradingFees || 0);
-      // The backend calculates tax per profitable sale. Summing only the annual
-      // net result would incorrectly turn taxable gains into 0 € after losses.
-      const capitalGainsTax = Math.max(0, Number(profit.estimatedTax || 0));
-      const dividendGross = Number(dividends.dividendGross || 0);
-      const withholdingTax = Math.abs(Number(dividends.dividendTax || 0));
-      const dividendTaxEstimate = Math.max(0, dividendGross * TAX_RATE - withholdingTax);
-      return { year, realizedBeforeTax, capitalGainsTax, dividendGross, withholdingTax, dividendTaxEstimate, estimate: capitalGainsTax + dividendTaxEstimate };
-    });
-  }, [dashboard]);
-  const current = years[0] || null;
-
-  if (loading) return <div className="loading-state">Lade Steuer-Cockpit...</div>;
+  if (loading) return <div className="loading-state">Lade Steuerbuchungen...</div>;
   if (error) return <div className="error-box">{error}</div>;
+  const tax = dashboard?.paidTax;
+  if (!tax?.available) return <div className="error-box">{tax?.error || "Bezahlte KESt ist für diesen Datenstand noch nicht verfügbar. Bitte Dashboard aktualisieren."}</div>;
 
-  return <div>
-    <section className="hero-card"><div><div className="eyebrow">Steuer-Cockpit</div><h2>Orientierung für deine Veranlagung</h2><p>Die Rechnung übernimmt eine von Bitpanda im Trade ausgewiesene Steuer, falls vorhanden. Fehlt sie, werden 27,5 % auf jeden positiven realisierten Verkauf nach Gebühren geschätzt. Quellensteuer aus Dividenden wird gegengerechnet. Keine Steuerberatung.</p></div><div className="hero-status"><span>Schätzung {current?.year || "-"}</span><strong>{eur(current?.estimate)}</strong><small>Ohne Verlustverrechnung über externe Depots</small></div></section>
-    <div className="info-box"><strong>Wichtig:</strong> Das ist kein Steuerreport. Die Ansicht verrechnet Verluste nicht automatisch mit positiven Einzelverkäufen und berücksichtigt keine externen Depots, Verlusttöpfe oder Sonderfälle. Prüfe vor einer Erklärung immer den offiziellen Bitpanda-Steuerreport und Jahresdokumente.</div>
-    <section className="table-card tax-overview-card"><div className="section-heading"><h3>Jahresübersicht</h3><span>27,5 % KESt-Annahme</span></div><table className="clean-table tax-overview-table"><thead><tr><th>Jahr</th><th>Realisierte Basis</th><th>KESt aus Verkäufen</th><th>Dividenden brutto</th><th>Quellensteuer</th><th>Zusätzliche Dividenden-KESt</th><th>Schätzung</th></tr></thead><tbody>{years.map(item => <tr key={item.year}><td><strong>{item.year}</strong></td><td>{eur(item.realizedBeforeTax)}</td><td className="negative">{eur(item.capitalGainsTax)}</td><td className="positive">{eur(item.dividendGross)}</td><td className="negative">{eur(item.withholdingTax)}</td><td className="negative">{eur(item.dividendTaxEstimate)}</td><td className="negative strong">{eur(item.estimate)}</td></tr>)}</tbody></table>{years.length === 0 && <p className="category-empty">Noch keine steuerlich relevanten Buchungen gefunden.</p>}</section>
+  return <div className="tax-view">
+    <section className="hero-card">
+      <div><div className="eyebrow">Steuern</div><h2>Deine bereits bezahlte KESt</h2><p>Tatsächlich gebuchte Steuer auf Verkäufe und Positionsschließungen, abzüglich Erstattungen und einschließlich bezahlter Nachforderungen. Dividenden-KESt wird separat gezeigt.</p></div>
+      <div className="hero-status"><span>Bezahlte KESt aus Verkäufen · gesamt</span><strong>{eur(tax.salesPaid)}</strong><small>Alle geladenen Jahre · nach Erstattungen</small></div>
+    </section>
+    <section className="table-card tax-overview-card">
+      <div className="section-heading"><h3>Jahresübersicht</h3><span>Gebuchte Zahlungen</span></div>
+      <div className="tax-table-scroll"><table className="clean-table tax-overview-table"><thead><tr><th>Jahr</th><th>Bezahlte KESt aus Verkäufen</th><th>Dividenden-KESt</th><th>Sonstige KESt</th><th>KESt gesamt</th><th>Buchungen</th></tr></thead><tbody>
+        {tax.yearly.map(year => <tr key={year.period}><td><strong>{year.period}</strong></td><td>{eur(year.salesPaid)}</td><td>{eur(year.dividendsPaid)}</td><td>{eur(year.otherPaid)}</td><td className="strong">{eur(year.totalPaid)}</td><td>{year.withheld === 0 && year.refunded === 0 && year.settlements === 0 ? "Keine KESt-Buchungen gefunden" : "Abzüge und Erstattungen verfügbar"}</td></tr>)}
+      </tbody></table></div>
+      {!tax.yearly.length && <p className="category-empty">Keine KESt-Zahlungen in der geladenen Historie gefunden.</p>}
+      <p className="muted tax-note">0,00 € ohne Steuerbuchungen bedeutet: In der geladenen API-Historie wurde für dieses Jahr kein KESt-Abzug gefunden. Eine mögliche selbst zu zahlende Steuer wird hier nicht berechnet. Erstattungen werden am Buchungsdatum berücksichtigt. Handels- und Finanzierungsgebühren sowie Quellensteuer gehören nicht zu diesen KESt-Beträgen.</p>
+    </section>
+    <section className="table-card tax-bookings-card">
+      <div className="section-heading"><h3>Für was und wann wurde KESt bezahlt?</h3></div>
+      <div className="tax-detail-controls"><label>Steuerart <select value={category} onChange={event => setCategory(event.target.value)}><option value="sales">Verkäufe und Positionsschließungen</option><option value="dividends">Dividenden</option><option value="other">Sonstige KESt</option></select></label><label><input type="checkbox" checked={showRefunded} onChange={event => setShowRefunded(event.target.checked)} /> Vollständig erstattete Buchungen anzeigen</label></div>
+      {tax.yearly.map(year => {
+        const allRecords = paidTaxRecords(tax.events, year.period, category);
+        const records = allRecords.filter(record => showRefunded || record.paid !== 0);
+        return <details className="tax-year-details" key={`${year.period}-${category}`}>
+          <summary><span>{year.period} · {records.length} Buchungen</span><strong>{eur(year[category === "sales" ? "salesPaid" : category === "dividends" ? "dividendsPaid" : "otherPaid"])}</strong></summary>
+          {!records.length && <p className="category-empty">Keine verbleibenden Zahlungen für diese Auswahl.</p>}
+          {records.map(record => <details className="tax-payment-details" key={record.id}>
+            <summary><span><strong>{record.asset}</strong><small>{record.reason && `${record.reason} · `}{date(record.date)}</small></span><strong className={record.paid < 0 ? "positive" : record.paid > 0 ? "negative" : "muted"}>{record.paid < 0 ? "Erstattung " : "Bezahlt "}{eur(Math.abs(record.paid))}</strong></summary>
+            <div className="tax-table-scroll"><table className="clean-table"><thead><tr><th>Datum</th><th>Buchung</th><th>Steuerzahlung</th></tr></thead><tbody>{record.events.map(event => <tr key={event.id}><td>{date(event.date)}</td><td>{kinds[event.kind]}</td><td className={event.amount < 0 ? "positive" : "negative"}>{eur(event.amount)}</td></tr>)}</tbody><tfoot><tr><td colSpan="2"><strong>Nach Erstattungen</strong></td><td><strong>{eur(record.paid)}</strong></td></tr></tfoot></table></div>
+          </details>)}
+        </details>;
+      })}
+    </section>
+    <SourceTaxPanel insights={dashboard.accountInsights} onSelectAsset={onSelectAsset} />
   </div>;
 }
