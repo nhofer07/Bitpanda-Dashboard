@@ -25,10 +25,10 @@ const PAGE_INFO = {
     title: "Überblick erklärt",
     intro: "Diese Seite fasst dein aktuelles Bitpanda-Portfolio zusammen. Sie trennt aktuellen Depotwert, bereits abgeschlossene Ergebnisse und noch offene Kursbewegungen.",
     sections: [
-      ["Investiert", "Aktueller Marktwert deiner offenen Positionen. Nicht investiertes Fiat-Guthaben ist hier nicht enthalten."],
+      ["Marktwert der Positionen", "Aktueller Marktwert deiner offenen Positionen. Nicht investiertes Fiat-Guthaben ist hier nicht enthalten."],
       ["Fiat Netto", "Einzahlungen minus Auszahlungen (inklusive Ausgaben) minus Transfers auf andere Konten. Deine Buchungszuordnung wird berücksichtigt. Rückerstattungen und ignorierte Buchungen sind darin nicht enthalten."],
-      ["Gesamtrendite", "Differenz zwischen Gesamtwert und deinen Netto-Einzahlungen. Sie ist eine eigene Dashboard-Kennzahl und keine offizielle Bitpanda-Performance."],
-      ["Portfolioverlauf", "Die Linie zeigt den um Ein- und Auszahlungen bereinigten Verlauf. Die Beträge links zeigen den tatsächlich aufgezeichneten Portfoliowert zum Zeitpunkt des höchsten und tiefsten Kurvenpunkts. Ein- und Auszahlungen werden als Punkte markiert und aus der Renditeberechnung herausgerechnet. Fehlen zwischen zwei Zeitpunkten Werte, verbindet der Chart die vorhandenen Datenpunkte."],
+      ["Ergebnis gegenüber Netto-Einzahlungen", "Differenz zwischen Gesamtwert und Netto-Einzahlungen. Der Prozentwert bezieht sich auf die Netto-Einzahlungen und ist keine zeitgewichtete Rendite."],
+      ["Portfolioverlauf", "Der Chart verwendet bevorzugt Bitpandas Portfoliohistorie für die letzten 24 Stunden, Woche, Monat, sechs Monate oder Jahr. Die Standardkurve ist um zugeordnete Zahlungsbewegungen bereinigt. „Tatsächliche Werte anzeigen“ zeigt die damaligen Eurobeträge inklusive Ein-/Auszahlungen. „Buchungen ausblenden“ versteckt nur die Markierungen und Liste. Die Prozent-Rendite stammt von Bitpanda; das bereinigte Euro-Ergebnis folgt deiner Cashflow-Zuordnung. Unter „Gespeichert“ bleibt der lokale Verlauf verfügbar. Fehlende oder veraltete API-Daten sind gekennzeichnet."],
       ["Unrealisiert", "Aktueller Marktwert offener Positionen minus ihrer verbleibenden Kostenbasis. Dieser Wert ändert sich mit dem Kurs."],
       ["Offene Positionen", "Die Positionskarten im Cockpit zeigen Restmenge, Kostenbasis, durchschnittlichen Einstieg, realisiertes und unrealisiertes Ergebnis sowie Spot- oder Hebeldaten. Über „Details ansehen“ öffnest du das Asset mit seiner Trade-Historie."],
       ["Abgleich", "Der Wallet-Abgleich in den Asset-Details zeigt Unterschiede zwischen Handelsverlauf und Bestand. Die Kostenbasis entspricht den Kaufkosten der noch offenen Menge."],
@@ -42,7 +42,7 @@ const PAGE_INFO = {
       ["Brutto G/V", "Verkaufserlös vor Trading-Gebühren minus die anteilige Kostenbasis der verkauften Menge."],
       ["Netto G/V", "Brutto G/V nach Kauf- und Verkaufsgebühren sowie gebuchter KESt nach Erstattungen. Allgemeine Steuerkorrekturen werden im Gesamtergebnis berücksichtigt."],
       ["Trading-Gebühren", "Verwendet die ausdrücklich ausgewiesenen Bitpanda-Gebühren, einschließlich verschachtelter Gebührenfelder. Fehlende Gebühren werden aus den vorhandenen Handelsbeträgen abgeleitet."],
-      ["Eigene Finanzierungsgebühren", "Optional von dir ergänzte Kosten, etwa für Hebelpositionen. Sie werden nur lokal im Browser gespeichert."],
+      ["Hebel-Finanzierungskosten", "Gebuchte Finanzierungskosten geschlossener Hebelpositionen werden automatisch dem jeweiligen Asset zugeordnet und vom realisierten Gewinn abgezogen. Die EUR-Bewertung stammt aus den historischen Buchungen oder der zugehörigen Kreditrückzahlung."],
       ["Filter & Details", "Die Ansicht kann Assets ausblenden oder nach Anlageklasse filtern. Öffne ein Asset für jede einzelne Kauf- und Verkaufstransaktion."]
     ]
   },
@@ -74,15 +74,6 @@ const PAGE_INFO = {
       ["Investitionsbetrag", "Gib beispielsweise 100 Euro ein. Der Rechner ermittelt daraus automatisch die kaufbaren Anteile zum aktuellen Kurs. Änderst du die Anteile, wird der Betrag ebenfalls aktualisiert."],
       ["Ziel", "Du gibst einen gewünschten Gewinn oder Verlust vor. Das Ergebnis ist der dazu rechnerisch nötige Kurs."],
       ["Grenzen", "Steuern, Gebühren, Spread und zukünftige Einzahlungen können das reale Ergebnis verändern."]
-    ]
-  },
-  adjustments: {
-    title: "Sonderfälle erklärt",
-    intro: "Hier kannst du Positionen ergänzen oder korrigieren, wenn die automatisch rekonstruierte Historie nicht vollständig ist.",
-    sections: [
-      ["Manuelle Position", "Ergänzt eine Menge und durchschnittlichen Einstiegspreis oder überschreibt eine bestehende Rekonstruktion."],
-      ["Einsatz", "Sinnvoll bei Depotüberträgen, fehlender alter Handelshistorie oder Positionen, die Bitpanda nicht mehr im erwarteten Format liefert."],
-      ["Vorsicht", "Manuelle Werte beeinflussen nur die dargestellte Position und sollten mit deinen Unterlagen abgeglichen werden."]
     ]
   },
   overview: {
@@ -166,7 +157,7 @@ export default function InfoModal({ view, onClose }) {
       <header><div><div className="eyebrow">Seiteninformation</div><h2 id="info-modal-title">{info.title}</h2></div><button className="info-modal-close" onClick={onClose} aria-label="Info-Fenster schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button></header>
       <p className="info-modal-intro">{info.intro}</p>
       <div className="info-modal-sections">{info.sections.map(([title, text]) => <article key={title}><strong>{title}</strong><p>{text}</p></article>)}</div>
-      <footer><span>Die Erklärung bezieht sich auf die gerade geöffnete Seite.</span><button className="primary-button" onClick={onClose}>Verstanden</button></footer>
+      <footer><button className="primary-button" onClick={onClose}>Verstanden</button></footer>
     </section>
   </div>;
 }

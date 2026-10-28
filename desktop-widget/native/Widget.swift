@@ -31,7 +31,7 @@ struct BitpandaPortfolioWidget: Widget {
                 .widgetURL(URL(string:"bitpandawidget://settings"))
         }
         .configurationDisplayName("Bitpanda")
-        .description("Dein Portfoliowert und heutiger cashflow-bereinigter Verlauf.")
+        .description("Dein Portfoliowert und geprüfter, cashflow-bereinigter Verlauf.")
         .supportedFamilies([.systemSmall])
     }
 }
@@ -45,7 +45,7 @@ struct BitpandaDailyGainWidget: Widget {
                 .widgetURL(URL(string:"bitpandawidget://settings"))
         }
         .configurationDisplayName("Bitpanda Tagesgewinn")
-        .description("Dein heutiger Gewinn oder Verlust in Euro und Prozent mit cashflow-bereinigtem Chart.")
+        .description("Dein Gewinn oder Verlust im angezeigten Zeitraum mit geprüftem, cashflow-bereinigtem Chart.")
         .supportedFamilies([.systemSmall,.systemMedium])
     }
 }

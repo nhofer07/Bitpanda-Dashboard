@@ -169,3 +169,18 @@ test('extended-hours requests also cover weekly stocks but leave crypto and dail
   assert.equal(requested.searchParams.get('includePrePost'), expected);
  }
 });
+
+test('missing currency retries the alternate host instead of accepting unusable prices', async () => {
+ const calls = [];
+ const result = await loadMarketHistory({symbol:'BTC', category:'crypto',range:'max',fetchImpl:async url => {
+  calls.push(String(url));
+  return {ok:true,json:async()=>({chart:{result:[{meta:String(url).includes('query1') ? {} : {currency:'EUR'},timestamp:[1700000000,1700086400],indicators:{quote:[{close:[100,101]}]}}]}})};
+ }});
+ assert.equal(calls.length,2);
+ assert.match(calls[1],/query2/);
+ assert.equal(result.currency,'EUR');
+});
+
+test('prices with no verifiable currency are never presented as EUR', async () => {
+ await assert.rejects(loadMarketHistory({symbol:'BTC',category:'crypto',range:'max',fetchImpl:async()=>({ok:true,json:async()=>({chart:{result:[{meta:{},timestamp:[1700000000,1700086400],indicators:{quote:[{close:[100,101]}]}}]}})})}),/keine ausreichende Historie/);
+});

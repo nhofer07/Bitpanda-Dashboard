@@ -1,0 +1,58 @@
+[
+  {
+    "container": "app-content",
+    "before": "page-heading",
+    "after": "profit-loss-view",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "profit-loss-view",
+    "before": "page-intro ",
+    "after": "section-shortcuts",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "profit-loss-view",
+    "before": "section-shortcuts",
+    "after": "view-panel",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "profit-loss-view",
+    "before": "view-panel",
+    "after": "stats-grid profit-stats-grid",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "profit-loss-view",
+    "before": "stats-grid profit-stats-grid",
+    "after": "category-overview",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "profit-loss-view",
+    "before": "category-overview",
+    "after": "",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "profit-loss-view",
+    "before": "",
+    "after": "toolbar profit-assets-toolbar",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "profit-loss-view",
+    "before": "toolbar profit-assets-toolbar",
+    "after": "table-card profit-desktop-table",
+    "gap": 24,
+    "expected": 24
+  }
+]

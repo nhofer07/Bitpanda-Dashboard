@@ -39,6 +39,9 @@ struct PortfolioState: Codable {
     var offline = false
     var preview = false
     var completeDay = false
+    var periodLabel: String?
+    var chartLastPointAt: Date?
+    var correctionCount: Int?
     var notice = ""
 }
 enum SharedStore {
@@ -88,6 +91,19 @@ var viennaCalendar: Calendar {
 }
 func summarize(_ data:[String:Any], overrides:[String:String], now:Date = Date()) throws -> PortfolioState {
     guard let portfolio=data["portfolio"] as? [String:Any], let value=portfolio["totalValue"] as? Double, value.isFinite, let loaded=parseDate(data["loadedAt"]) else { throw URLError(.cannotParseResponse) }
+    if let chart=data["chart"] as? [String:Any], chart["version"] as? Int == 1 {
+        guard let rows=chart["points"] as? [[String:Any]] else { throw URLError(.cannotParseResponse) }
+        var points:[ChartPoint]=[]
+        for row in rows {
+            guard let time=row["time"] as? Double, let amount=row["value"] as? Double, time.isFinite, amount.isFinite, time <= now.timeIntervalSince1970 else { throw URLError(.cannotParseResponse) }
+            points.append(ChartPoint(time:time,value:amount))
+        }
+        points.sort{$0.time < $1.time}
+        if !viennaCalendar.isDate(loaded,inSameDayAs:now) { points=[] }
+        let change=points.count > 1 ? chart["change"] as? Double : nil
+        let percent=points.count > 1 ? chart["percent"] as? Double : nil
+        return PortfolioState(value:value,loadedAt:loaded,points:points,change:change,percent:percent,preview:(data["cache"] as? [String:Any])?["status"] as? String == "local-preview",completeDay:chart["completeDay"] as? Bool ?? false,periodLabel:chart["periodLabel"] as? String,chartLastPointAt:parseDate(chart["lastPointAt"]),correctionCount:(chart["corrections"] as? [[String:Any]])?.count)
+    }
     let start=viennaCalendar.startOfDay(for:now).timeIntervalSince1970
     let historyStart=parseDate(data["portfolioHistoryStartedAt"])?.timeIntervalSince1970 ?? 0
     var byTime:[Double:Double]=[:]
@@ -198,13 +214,29 @@ func changeLabel(_ change:Double,percent:Double?) -> String {
     }
     return result
 }
+struct WidgetChartFooter: View {
+    var state:PortfolioState
+    var body: some View {
+        VStack(alignment:.leading,spacing:3) {
+            if let count=state.correctionCount, count > 0 {
+                Text("\(count) \(count == 1 ? "Messpunkt korrigiert" : "Messpunkte korrigiert")").foregroundStyle(.secondary)
+            }
+            HStack(alignment:.firstTextBaseline,spacing:6) {
+                Text(state.periodLabel ?? (state.completeDay || state.points.isEmpty ? "Heute" : "Ab \(widgetTime(Date(timeIntervalSince1970:state.points.first!.time)))"))
+                Spacer(minLength:4)
+                if let date=state.chartLastPointAt ?? state.loadedAt { Text(widgetTime(date,includeDate:true)) }
+            }
+        }.font(.system(size:8)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7).frame(maxWidth:.infinity,alignment:.leading)
+    }
+}
+
 struct PortfolioCard: View {
     var state:PortfolioState
     var positive:Bool { (state.change ?? 0) >= 0 }
     var tint:Color { positive ? Color(red:0.34,green:0.85,blue:0.61) : .red }
     var body: some View {
-        VStack(alignment:.leading,spacing:4) {
-            HStack {
+        VStack(alignment:.leading,spacing:6) {
+            HStack(alignment:.firstTextBaseline) {
                 Text("BITPANDA").font(.system(size:10,weight:.bold)).tracking(1).foregroundStyle(tint)
                 Spacer()
                 Text(state.offline ? "Offline" : state.preview ? "Vorschau" : state.source).font(.system(size:8)).foregroundStyle(.secondary)
@@ -226,15 +258,11 @@ struct PortfolioCard: View {
                     var area=path; area.addLine(to:CGPoint(x:size.width,y:size.height)); area.addLine(to:CGPoint(x:0,y:size.height)); area.closeSubpath()
                     context.fill(area,with:.linearGradient(Gradient(colors:[tint.opacity(0.3),tint.opacity(0)]),startPoint:.zero,endPoint:CGPoint(x:0,y:size.height)))
                     context.stroke(path,with:.color(tint),style:StrokeStyle(lineWidth:1.8,lineCap:.round,lineJoin:.round))
-                }.frame(maxHeight:.infinity).privacySensitive().accessibilityLabel("Heutiger cashflow-bereinigter Portfolioverlauf")
+                }.frame(maxHeight:.infinity).privacySensitive().accessibilityLabel("Cashflow-bereinigter Portfolioverlauf")
             } else {
                 Text(state.loadedAt == nil ? "Dashboard verbinden" : state.points.isEmpty ? "Keine heutigen Daten" : "Aufzeichnung beginnt …").font(.system(size:10)).foregroundStyle(.secondary).frame(maxHeight:.infinity)
             }
-            HStack {
-                Text(state.completeDay || state.points.isEmpty ? "Heute" : "Ab \(widgetTime(Date(timeIntervalSince1970:state.points.first!.time)))")
-                Spacer()
-                if let loaded=state.loadedAt { Text(widgetTime(loaded,includeDate:true)) }
-            }.font(.system(size:8)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
+            WidgetChartFooter(state:state)
         }
     }
 }
@@ -250,15 +278,15 @@ struct DailyGainCard: View {
     var tint:Color { positive ? Color(red:0.34,green:0.85,blue:0.61) : .red }
     var body: some View {
         VStack(alignment:.leading,spacing:4) {
-            HStack {
-                Text("TAGESGEWINN").font(.system(size:10,weight:.bold)).tracking(1).foregroundStyle(tint)
+            HStack(alignment:.firstTextBaseline) {
+                Text(state.periodLabel == "24 Stunden" ? "GEWINN · 24H" : "TAGESGEWINN").font(.system(size:10,weight:.bold)).tracking(0.7).foregroundStyle(tint).lineLimit(1).minimumScaleFactor(0.75)
                 Spacer()
-                Text(state.offline ? "Offline" : state.preview ? "Vorschau" : state.source).font(.system(size:8)).foregroundStyle(.secondary)
+                Text(state.offline ? "Offline" : state.preview ? "Vorschau" : state.source).font(.system(size:8)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
             }
             Text(state.change.map { changeLabel($0,percent:nil) } ?? "—")
-                .font(.system(size:26,weight:.semibold,design:.rounded)).minimumScaleFactor(0.6).lineLimit(1).foregroundStyle(state.change == nil ? Color.secondary : tint).privacySensitive()
+                .font(.system(size:24,weight:.semibold,design:.rounded)).minimumScaleFactor(0.6).lineLimit(1).foregroundStyle(state.change == nil ? Color.secondary : tint).privacySensitive()
             Text(state.percent.map { ($0 >= 0 ? "+" : "") + $0.formatted(.number.precision(.fractionLength(2)).locale(Locale(identifier:"de_AT"))) + " %" } ?? "— %")
-                .font(.system(size:12,weight:.medium)).foregroundStyle(tint).privacySensitive()
+                .font(.system(size:11,weight:.medium)).foregroundStyle(tint).privacySensitive()
             if state.points.count > 1 {
                 Canvas { context,size in
                     let points=dailyGainPoints(state), values=points.map(\.value)
@@ -271,16 +299,11 @@ struct DailyGainCard: View {
                     let positions=points.map { CGPoint(x:($0.time-first)/duration*size.width,y:y($0.value)) }
                     var path=Path(); path.addLines(positions)
                     context.stroke(path,with:.color(tint),style:StrokeStyle(lineWidth:1.8,lineCap:.round,lineJoin:.round))
-                }.frame(maxHeight:.infinity).privacySensitive().accessibilityLabel("Heutiger cashflow-bereinigter Gewinnverlauf, beginnend bei null Euro")
+                }.frame(minHeight:20,maxHeight:.infinity).privacySensitive().accessibilityLabel("Cashflow-bereinigter Gewinnverlauf, beginnend bei null Euro")
             } else {
                 Text(state.loadedAt == nil ? "Dashboard verbinden" : state.points.isEmpty ? "Keine heutigen Daten" : "Aufzeichnung beginnt …").font(.system(size:10)).foregroundStyle(.secondary).frame(maxHeight:.infinity)
             }
-            Text("Cashflow-bereinigt · inkl. Guthaben").font(.system(size:8)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
-            HStack {
-                Text(state.completeDay || state.points.isEmpty ? "Heute" : "Ab \(widgetTime(Date(timeIntervalSince1970:state.points.first!.time)))")
-                Spacer()
-                if let loaded=state.loadedAt { Text(widgetTime(loaded,includeDate:true)) }
-            }.font(.system(size:8)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
+            WidgetChartFooter(state:state)
         }
     }
 }

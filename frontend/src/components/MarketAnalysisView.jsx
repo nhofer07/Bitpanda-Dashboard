@@ -1,3 +1,6 @@
+import DataNote from "./DataNote.jsx";
+import PageIntro from "./PageIntro.jsx";
+import LoadingState from "./LoadingState.jsx";
 import MarketHistoryChart from "./MarketHistoryChart.jsx";
 import { useEffect, useMemo, useState } from "react";
 import { addMarketWatchlistItem, readMarketWatchlist, writeMarketWatchlist } from "./marketWatchlist.js";
@@ -28,6 +31,7 @@ function portfolioAssets(data) {
 export default function MarketAnalysisView({ dashboardData, loading: dashboardLoading }) {
   const [watchlist, setWatchlist] = useState(readMarketWatchlist);
   const [quotes, setQuotes] = useState([]);
+  const [quotesLoaded, setQuotesLoaded] = useState(false);
   const [selected, setSelected] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [news, setNews] = useState([]);
@@ -48,10 +52,11 @@ export default function MarketAnalysisView({ dashboardData, loading: dashboardLo
   useEffect(() => {
     if (!combined.length) return;
     const controller = new AbortController();
+    setQuotesLoaded(false);
     fetch(`/api/market/quotes?items=${encodeURIComponent(JSON.stringify(combined.map(({ symbol, category, name, portfolio }) => ({ symbol, category, name, isPortfolio: Boolean(portfolio) }))))}`, { signal: controller.signal })
       .then(response => response.json())
-      .then(result => { if (result.error) throw new Error(result.error); setQuotes(result.items || []); })
-      .catch(err => { if (err.name !== "AbortError") setError(err.message); });
+      .then(result => { if (result.error) throw new Error(result.error); setQuotes(result.items || []); setQuotesLoaded(true); })
+      .catch(err => { if (err.name !== "AbortError") { setError(err.message); setQuotesLoaded(true); } });
     return () => controller.abort();
   }, [combined]);
 
@@ -112,7 +117,7 @@ export default function MarketAnalysisView({ dashboardData, loading: dashboardLo
     setWatchlist(current => { const next = current.filter(item => item.symbol !== symbol); writeMarketWatchlist(next); return next; });
   }
 
-  const cards = combined.map(asset => ({ ...asset, quote: quotes.find(quote => quote.symbol === asset.symbol) }));
+  const cards = combined.map(asset => ({ ...asset, quote: quotes.find(quote => quote.symbol === asset.symbol) || (quotesLoaded ? { error: "Kurs nicht verfügbar" } : null) }));
   const sorted = [...cards].sort((a, b) => {
     if (sort === "name") return a.name.localeCompare(b.name);
     if (sort === "category") return categoryLabel(a.category).localeCompare(categoryLabel(b.category));
@@ -123,18 +128,18 @@ export default function MarketAnalysisView({ dashboardData, loading: dashboardLo
   const displayedNews = visibleNews.slice(0, visibleNewsCount);
 
   return <div className="market-analysis">
-    <section className="hero-card market-hero">
-      <div><div className="eyebrow">Research Cockpit</div><h1>Marktanalyse</h1><p>Vergleiche externe Analystenmeinungen, Kursziele, aktuelle Marktdaten und Nachrichten mit der transparent getrennten, regelbasierten Einschätzung des Dashboards.</p></div>
+    <PageIntro>
+      <div><p>Vergleiche externe Analystenmeinungen, Kursziele, aktuelle Marktdaten und Nachrichten mit der transparent getrennten, regelbasierten Einschätzung des Dashboards.</p></div>
       <div className="hero-status"><span>Beobachtet</span><strong>{combined.length}</strong><small>{portfolio.length} aus deinem Portfolio</small></div>
-    </section>
+    </PageIntro>
 
-    <div className="info-box"><strong>Einordnung:</strong> „Analystenmeinung“ zeigt externe Finnhub-Daten. „Dashboard-Einschätzung“ wird aus festen Regeln berechnet. Beide können unvollständig oder falsch sein und sind keine Anlageberatung.</div>
+    <DataNote title="Datenquellen & Einordnung"> „Analystenmeinung“ zeigt externe Finnhub-Daten. „Dashboard-Einschätzung“ wird aus festen Regeln berechnet. Beide können unvollständig oder falsch sein und sind keine Anlageberatung.</DataNote>
     {error && <div className="error-box">{error}</div>}
 
     <section className="table-card watchlist-card">
       <div className="section-heading"><div><h3>Meine Watchlist</h3><span>Portfolio-Assets erscheinen automatisch und werden nicht lokal gespeichert.</span></div><select className="cashflow-select" value={sort} onChange={event => setSort(event.target.value)}><option value="change">Nach Tagesbewegung</option><option value="name">Nach Name</option><option value="category">Nach Anlageklasse</option></select></div>
       <div className="watchlist-add"><input className="search-input" value={query} onChange={event => setQuery(event.target.value)} placeholder="Symbol hinzufügen, z. B. META, BTC oder SPYY" />{searchResults.length > 0 && <div className="symbol-results">{searchResults.map(item => <button key={item.symbol} onClick={() => addWatch(item)}><span><strong>{item.symbol}</strong> · {item.name}</span><small>{categoryLabel(item.category)} · Hinzufügen</small></button>)}</div>}</div>
-      {dashboardLoading ? <p className="muted">Portfolio wird geladen …</p> : <div className="watchlist-grid">{sorted.map(asset => <WatchCard key={asset.symbol} asset={asset} isSaved={watchlist.some(item => item.symbol === asset.symbol)} onChoose={chooseAsset} onRemove={removeWatch} />)}</div>}
+      {dashboardLoading ? <LoadingState>Portfolio wird geladen …</LoadingState> : <div className="watchlist-grid">{sorted.map(asset => <WatchCard key={asset.symbol} asset={asset} isSaved={watchlist.some(item => item.symbol === asset.symbol)} onChoose={chooseAsset} onRemove={removeWatch} />)}</div>}
       {!combined.length && <p className="muted">Füge ein Symbol hinzu oder lade dein Portfolio, um zu starten.</p>}
     </section>
 
@@ -155,7 +160,7 @@ function WatchCard({ asset, isSaved, onChoose, onRemove }) {
 
 function AnalysisPanel({ selected, result, portfolio, loading }) {
   if (!selected) return <section className="table-card analysis-empty"><h3>Asset auswählen</h3><p>Wähle ein Portfolio-Asset oder einen Eintrag aus deiner Watchlist, um aktuelle Nachrichten und eine regelbasierte Dateneinschätzung zu sehen.</p></section>;
-  if (loading) return <section className="table-card analysis-empty"><h3>Analyse wird geladen …</h3><p>Kursdaten und Nachrichten werden abgefragt.</p></section>;
+  if (loading) return <LoadingState>Analyse wird geladen …</LoadingState>;
   if (!result) return <section className="table-card analysis-empty"><h3>Analyse nicht verfügbar</h3><p>Bitte später erneut versuchen.</p></section>;
   const { asset, analysis } = result;
   const change = Number(asset.changePercent || 0);

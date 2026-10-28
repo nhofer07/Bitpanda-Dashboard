@@ -10,8 +10,8 @@ export default function SummaryCards({ transactions, overrides = {} }) {
       <Card title="Echte Ausgaben" value={formatCurrency(totals.expenses)} tone="negative" />
       <Card title="Transfers auf andere Konten" value={formatCurrency(totals.transfers)} />
       <Card title="Rückerstattungen" value={formatCurrency(totals.refunds)} tone="positive" />
-      <Card title="Netto" value={formatCurrency(totals.fiatNet)} tone={totals.fiatNet >= 0 ? "positive" : "negative"} />
-      <Card title="Treffer" value={transactions.length} />
+      <Card title="Netto-Einzahlungen" value={formatCurrency(totals.fiatNet)} tone={totals.fiatNet >= 0 ? "positive" : "negative"} />
+      <Card title="Buchungen in Auswahl" value={transactions.length} />
       <Card title="Sparplan-Buchungen" value={savingsCount} tone={savingsCount > 0 ? "positive" : ""} />
     </div>
   );

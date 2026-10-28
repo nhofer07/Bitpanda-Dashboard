@@ -7,8 +7,9 @@ export function loadMarketHistorySnapshot(asset, range, refresh, retry = 0) {
   const symbol = String(asset.symbol || asset.assetKey || "").trim().toUpperCase();
   const name = asset.displayName || asset.name || symbol;
   const category = asset.category || "other";
-  const params = new URLSearchParams({ symbol, name, category, range, refresh });
-  const key = JSON.stringify([symbol, name, category, range, refresh, retry]);
+  const source = asset.chartSource || "market";
+  const params = new URLSearchParams({ symbol, name, category, range, refresh, source });
+  const key = JSON.stringify([symbol, name, category, range, refresh, retry, source]);
   if (snapshots.has(key)) return snapshots.get(key);
   const request = fetch(`/api/market/history?${params}`, { cache: "no-store" }).then(async response => {
     const result = await response.json();

@@ -1,19 +1,15 @@
+import SectionShortcuts from "./SectionShortcuts.jsx";
+import AdaptiveTable from "./AdaptiveTable.jsx";
+import { formatCurrency as eur, formatNumber as num, formatPercent as percent } from "./formatters.js";
+import PageIntro from "./PageIntro.jsx";
+import DataQuality from "./DataQuality.jsx";
+import LoadingState from "./LoadingState.jsx";
 import PageDescription from "./PageDescription.jsx";
 import React, { useEffect, useMemo, useState } from "react";
 import { hideAssetKey, readHiddenAssets, showAssetKey, writeHiddenAssets } from "./savedAssetView.js";
-import { feeAdjustmentTotal, readProfitFeeAdjustments, writeProfitFeeAdjustments } from "./profitFeeAdjustments.js";
 
 import { getProfitValue, realizedTradingFees } from "./profitResults.js";
 
-const eur = value => `${Number(value || 0).toLocaleString("de-DE", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2
-})} €`;
-const num = value => Number(value || 0).toLocaleString("de-DE", { maximumFractionDigits: 8 });
-const percent = value => `${Number(value || 0).toLocaleString("de-DE", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2
-})}%`;
 const dt = time => time?.date_iso8601 ? new Date(time.date_iso8601).toLocaleString("de-DE") : "-";
 const categoryLabel = asset => asset.categoryLabel || "Sonstige";
 const assetTitle = asset => asset.displayName || asset.name || asset.assetKey || "-";
@@ -21,9 +17,9 @@ const assetSymbol = asset => asset.assetKey || asset.name || "-";
 const visibleCategory = item => (item.category || "other") !== "other";
 const isCashPlusAsset = asset => String(asset?.assetKey || asset?.name || "").toUpperCase() === "BCPEUR";
 const profitModes = {
-  realized: { title: "Netto realisiert", column: "Netto G/V" },
-  unrealized: { title: "Unrealisiert", column: "Unrealisiert" },
-  combined: { title: "Gesamt G/V", column: "Gesamt" }
+  realized: { title: "Gewinn / Verlust aus Verkäufen · netto", column: "Verkäufe · netto" },
+  unrealized: { title: "Unrealisierter Gewinn / Verlust", column: "Unrealisiert" },
+  combined: { title: "Verkäufe netto + unrealisierter Gewinn / Verlust", column: "Gesamt" }
 };
 
 function calculateAssetNetResults(asset) {
@@ -40,7 +36,7 @@ function calculateAssetNetResults(asset) {
   };
 }
 
-export default function ProfitLossView({ onSelectAsset }) {
+export default function ProfitLossView({ onSelectAsset, dashboardData }) {
   const [data, setData] = useState({ assets: [], top: {} });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -50,25 +46,25 @@ export default function ProfitLossView({ onSelectAsset }) {
   const [profitMode, setProfitMode] = useState("realized");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("default");
+  const [page, setPage] = useState(0);
+  const pageSize = 20;
   const [hiddenAssets, setHiddenAssets] = useState(() => readHiddenAssets());
-  const [feeAdjustments, setFeeAdjustments] = useState(() => readProfitFeeAdjustments());
 
   useEffect(() => {
-    fetch("/api/dashboard-data")
-      .then(response => response.json().then(result => {
-        if (!response.ok) throw new Error(result.error || "Fehler beim Laden");
-        setData({
-          ...(result.profitLoss || {}),
-          openPositions: result.openPositions || [],
-          portfolio: result.portfolio || {},
-          dividends: result.dividends || [],
-          paidTax: result.paidTax,
-          accountInsights: result.accountInsights
-        });
-      }))
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
+    let active = true;
+    const apply = result => {
+      if (!active) return;
+      setData({ ...(result.profitLoss || {}), openPositions: result.openPositions || [], portfolio: result.portfolio || {}, dividends: result.dividends || [], paidTax: result.paidTax, accountInsights: result.accountInsights });
+      setError(""); setLoading(false);
+    };
+    if (dashboardData) apply(dashboardData);
+    else fetch("/api/dashboard-data").then(async response => {
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Fehler beim Laden");
+      apply(result);
+    }).catch(err => { if (active) { setError(err.message); setLoading(false); } });
+    return () => { active = false; };
+  }, [dashboardData]);
 
   function removeFromSavedView(assetKey) {
     setHiddenAssets(current => {
@@ -92,26 +88,7 @@ export default function ProfitLossView({ onSelectAsset }) {
     writeHiddenAssets([]);
   }
 
-  function addFeeAdjustment({ assetKey, amount, note }) {
-    const value = Math.max(0, Number(amount || 0));
-    if (!assetKey || !value) return;
-    setFeeAdjustments(current => {
-      const next = [...current, { id: `${Date.now()}-${Math.random()}`, assetKey, amount: value, note: String(note || ""), createdAt: new Date().toISOString() }];
-      writeProfitFeeAdjustments(next);
-      return next;
-    });
-  }
-
-  function removeFeeAdjustment(id) {
-    setFeeAdjustments(current => {
-      const next = current.filter(entry => entry.id !== id);
-      writeProfitFeeAdjustments(next);
-      return next;
-    });
-  }
-
   const assets = (data.assets || []).filter(asset => !isCashPlusAsset(asset));
-  const effectiveFeeAdjustments = feeAdjustments.filter(entry => String(entry.assetKey || "").toUpperCase() !== "BCPEUR");
   const openPositionMap = useMemo(() => new Map((data.openPositions || []).map(position => [String(position.assetKey), position])), [data.openPositions]);
   const hiddenSet = useMemo(() => new Set(hiddenAssets.map(String)), [hiddenAssets]);
   const enrichedAssets = useMemo(() => assets.map(sourceAsset => {
@@ -121,21 +98,23 @@ export default function ProfitLossView({ onSelectAsset }) {
     return {
       ...asset,
       currentQuantity: openPosition?.currentQuantity ?? asset.currentQuantity,
+      costBasis: openPosition ? openPosition.costBasis : asset.costBasis,
+      averageRemainingCost: openPosition ? openPosition.averageRemainingCost : asset.averageRemainingCost,
+      averageEntrySource: openPosition?.averageEntrySource,
       currentValue: openPosition?.currentValue ?? null,
       currentPrice: openPosition?.currentPrice ?? null,
       unrealizedProfit: Number(openPosition?.unrealizedProfit || 0),
       unrealizedProfitPercent: openPosition?.unrealizedProfitPercent ?? null,
-      manualFees: feeAdjustmentTotal(effectiveFeeAdjustments, asset.assetKey),
-      netRealizedProfit: Number(asset.realizedProfit || 0) - feeAdjustmentTotal(effectiveFeeAdjustments, asset.assetKey)
+      netRealizedProfit: Number(asset.realizedProfit || 0)
     };
-  }), [assets, effectiveFeeAdjustments, openPositionMap]);
+  }), [assets, openPositionMap]);
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
     return enrichedAssets
       .filter(asset => mode === "all" || !hiddenSet.has(String(asset.assetKey)))
       .filter(asset => categoryFilter === "all" || (asset.category || "other") === categoryFilter)
-      .filter(asset => !query || JSON.stringify(asset).toLowerCase().includes(query));
+      .filter(asset => !query || `${assetTitle(asset)} ${assetSymbol(asset)}`.toLowerCase().includes(query));
   }, [categoryFilter, enrichedAssets, hiddenSet, mode, search]);
 
   const sortedAssets = useMemo(() => {
@@ -147,16 +126,26 @@ export default function ProfitLossView({ onSelectAsset }) {
     });
   }, [profitMode, sortOrder, visible]);
 
+  useEffect(() => { setPage(0); }, [search, mode, categoryFilter, sortOrder, profitMode]);
+  const pageCount = Math.max(1, Math.ceil(sortedAssets.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pagedAssets = sortedAssets.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const incompleteAssets = new Set((data.warnings || []).map(warning => warning.asset));
+
+  function changePage(next) {
+    setPage(next);
+    const target = document.getElementById('profit-assets');
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: 'start', behavior: 'instant' });
+  }
+
   const hiddenCount = assets.filter(asset => hiddenSet.has(String(asset.assetKey))).length;
-  const unallocatedManualFees = effectiveFeeAdjustments
-    .filter(entry => !enrichedAssets.some(asset => String(asset.assetKey) === String(entry.assetKey)))
-    .reduce((sum, entry) => sum + Math.max(0, Number(entry.amount || 0)), 0);
   const isCompleteView = visible.length === enrichedAssets.length;
   const generalTaxAdjustment = isCompleteView ? Number(data.unallocatedTaxAdjustment || 0) : 0;
-  const totalProfit = visible.reduce((sum, asset) => sum + getProfitValue(asset, profitMode), 0) - (profitMode === "unrealized" ? 0 : (isCompleteView ? unallocatedManualFees : 0) + generalTaxAdjustment);
+  const totalProfit = visible.reduce((sum, asset) => sum + getProfitValue(asset, profitMode), 0) - (profitMode === "unrealized" ? 0 : generalTaxAdjustment);
   const totalGrossProfit = visible.reduce((sum, asset) => sum + Number(asset.grossRealizedProfit || 0), 0);
   const totalTradingFees = visible.reduce((sum, asset) => sum + Number(asset.tradingFees || 0), 0);
-  const totalManualFees = visible.reduce((sum, asset) => sum + asset.manualFees, 0) + (isCompleteView ? unallocatedManualFees : 0);
+  const totalFinancingFees = visible.reduce((sum, asset) => sum + Number(asset.financingFees || 0), 0);
   const paidDividendTax = data.accountInsights?.available ? data.accountInsights.sourceTax?.totalPaid : null;
   const categorySummary = useMemo(() => buildCategorySummary(visible, profitMode).filter(visibleCategory), [profitMode, visible]);
   const ranking = useMemo(() => {
@@ -181,48 +170,26 @@ export default function ProfitLossView({ onSelectAsset }) {
     profitMode
   ).filter(visibleCategory), [enrichedAssets, hiddenSet, mode, profitMode]);
 
-  if (loading) return <h2>Lade Gewinne und Verluste...</h2>;
+  if (loading) return <LoadingState>Gewinne und Verluste werden geladen …</LoadingState>;
   if (error) return <div className="error-box">{error}</div>;
 
   return (
-    <div>
-      <section className="hero-card profit-hero">
+    <div className="profit-loss-view">
+      <PageIntro>
         <div>
-          <div className="eyebrow">Portfolio-Ansicht</div>
-          <h1>Realisierte Gewinne / Verluste</h1>
+
           <PageDescription summary="Realisierte Ergebnisse nach Gebühren und Steuern, aufgeteilt nach Asset und Anlageklasse.">
             Brutto G/V basiert auf den Fiat-Beträgen vor Kauf- und Verkaufsgebühren. Netto G/V berücksichtigt die ausgewiesenen Handelsgebühren und gebuchte KESt nach zugeordneten Erstattungen. Die gesamte bezahlte KESt enthält zusätzlich allgemeine Steuererstattungen und bezahlte Nachforderungen.
+            Gebühren und bezahlte KESt stammen aus den Bitpanda-Buchungen. Kostenbasis und Gewinne werden daraus berechnet. Bezahlte KESt und Quellensteuer gelten für alle geladenen Jahre und Assets; die übrigen Kennzahlen folgen deiner Auswahl. Allgemeine Steuerkorrekturen sind im Gesamtergebnis aller Assets enthalten und werden keinem einzelnen Asset zugeteilt.
           </PageDescription>
         </div>
         <div className="hero-status">
           <span>{mode === "all" ? "Alle Assets" : "Gespeicherte Ansicht"}</span>
           <strong>{visible.length}</strong>
         </div>
-      </section>
+      </PageIntro>
 
-      <div className="info-box">
-        <strong>Datenbasis:</strong> Gebühren und bezahlte KESt stammen aus den Bitpanda-Buchungen. Kostenbasis und Gewinne werden daraus berechnet. Bezahlte KESt und Quellensteuer gelten für alle geladenen Jahre und Assets; die übrigen Kennzahlen folgen deiner Auswahl. Allgemeine Steuerkorrekturen sind im Gesamtergebnis aller Assets enthalten und werden keinem einzelnen Asset zugeteilt.
-      </div>
-
-      <div className="stats-grid profit-stats-grid">
-        <Metric title={profitModes[profitMode].title} value={eur(totalProfit)} tone={totalProfit >= 0 ? "positive" : "negative"} />
-        <Metric title="Brutto realisiert" value={eur(totalGrossProfit)} tone={totalGrossProfit >= 0 ? "positive" : "negative"} />
-        <Metric title="Trading-Gebühren" value={eur(totalTradingFees)} />
-        <Metric title="Eigene Finanzierungsgebühren" value={eur(totalManualFees)} />
-        <Metric title="Bezahlte KESt aus Verkäufen · gesamt" value={data.paidTax?.available ? eur(data.paidTax.salesPaid) : "Nicht verfügbar"} />
-        <Metric title="Bezahlte Quellensteuer · gesamt" value={paidDividendTax == null ? "Nicht verfügbar" : eur(paidDividendTax)} />
-        <Metric title="Assets in Ansicht" value={visible.length} />
-        <Metric title="Ausgeblendete Assets" value={hiddenCount} />
-      </div>
-
-      {!data.paidTax?.available && <div className="info-box">{data.paidTax?.error || "Steuerbuchungen sind noch nicht verfügbar. Bitte Dashboard aktualisieren."} Gewinne enthalten solange keinen KESt-Abzug.</div>}
-
-      {(data.warnings || []).length > 0 && <div className="warning-box">Kostenbasis teilweise unvollständig: {(data.warnings || []).map(w => w.asset).join(", ")}. Rewards, Transfers oder fehlende Käufe können die berechneten Gewinne beeinflussen. Gebuchte Gebühren und Steuern bleiben davon unabhängig.</div>}
-
-      <CategoryOverview summary={categorySummary} mode={profitMode} />
-
-
-
+      <SectionShortcuts label="Bereiche der Gewinnauswertung" items={[{ id: 'profit-summary', label: 'Überblick' }, { id: 'profit-ranking', label: 'Gewinner & Verlierer' }, { id: 'profit-assets', label: 'Alle Assets' }]} />
       <div className="view-panel">
         <div className="segmented-control" aria-label="Ansicht umschalten">
           <button className={mode === "saved" ? "active" : ""} onClick={() => setMode("saved")}>Gespeicherte Ansicht</button>
@@ -251,24 +218,32 @@ export default function ProfitLossView({ onSelectAsset }) {
           ))}
         </div>
 
+        <span className="view-context">{visible.length} Assets · {hiddenCount} ausgeblendet</span>
         <button className="secondary-button" onClick={resetSavedView} disabled={hiddenCount === 0}>
           Ansicht zurücksetzen
         </button>
       </div>
 
-      <Ranking items={ranking} mode={profitMode} />
 
-      <details className="page-disclosure">
-        <summary>Eigene Finanzierungsgebühren verwalten</summary>
-      <FeeAdjustmentPanel
-        assets={[...enrichedAssets, ...(data.openPositions || []).filter(position => position.positionType === "leverage" && !isCashPlusAsset(position))]}
-        entries={effectiveFeeAdjustments}
-        onAdd={addFeeAdjustment}
-        onRemove={removeFeeAdjustment}
-      />
-      </details>
 
-      <div className="toolbar profit-assets-toolbar">
+      <div id="profit-summary" tabIndex={-1} className="stats-grid profit-stats-grid">
+        <Metric title={profitModes[profitMode].title} value={eur(totalProfit)} tone={totalProfit >= 0 ? "positive" : "negative"} />
+        <Metric title="Gewinn / Verlust aus Verkäufen · brutto" value={eur(totalGrossProfit)} tone={totalGrossProfit >= 0 ? "positive" : "negative"} />
+        <Metric title="Trading-Gebühren" value={eur(totalTradingFees)} />
+        <Metric title="Hebel-Finanzierungskosten" value={eur(totalFinancingFees)} />
+        <Metric title="Bezahlte KESt aus Verkäufen · gesamt" value={data.paidTax?.available ? eur(data.paidTax.salesPaid) : "Nicht verfügbar"} />
+        <Metric title="Bezahlte Quellensteuer · gesamt" value={paidDividendTax == null ? "Nicht verfügbar" : eur(paidDividendTax)} />
+      </div>
+
+      {!data.paidTax?.available && <div className="info-box">{data.paidTax?.error || "Steuerbuchungen sind noch nicht verfügbar. Bitte Dashboard aktualisieren."} Gewinne enthalten solange keinen KESt-Abzug.</div>}
+
+      {(data.warnings || []).length > 0 && <div className="warning-box">Vorläufige Ergebnisse · Kostenbasis teilweise unvollständig: {(data.warnings || []).map(w => w.asset).join(", ")}. Rewards, Transfers oder fehlende Käufe können die berechneten Gewinne beeinflussen. Gebuchte Gebühren und Steuern bleiben davon unabhängig.</div>}
+
+      <CategoryOverview summary={categorySummary} mode={profitMode} />
+
+      <div id="profit-ranking" tabIndex={-1}><Ranking items={ranking} mode={profitMode} /></div>
+
+      <div id="profit-assets" tabIndex={-1} className="toolbar profit-assets-toolbar">
         <input
           className="search-input"
           value={search}
@@ -279,8 +254,8 @@ export default function ProfitLossView({ onSelectAsset }) {
           <span>Sortierung</span>
           <select className="cashflow-select" value={sortOrder} onChange={event => setSortOrder(event.target.value)}>
             <option value="default">Standard</option>
-            <option value="highest">Höchster Preis zuerst</option>
-            <option value="lowest">Niedrigster Preis zuerst</option>
+            <option value="highest">Höchstes Ergebnis zuerst</option>
+            <option value="lowest">Niedrigstes Ergebnis zuerst</option>
           </select>
         </label>
       </div>
@@ -291,13 +266,31 @@ export default function ProfitLossView({ onSelectAsset }) {
         </div>
       )}
 
-      <div className="table-card">
-        <table className="clean-table">
+      <div className="mobile-profit-list">
+        {pagedAssets.map(asset => {
+          const result = getProfitValue(asset, profitMode);
+          const hidden = hiddenSet.has(String(asset.assetKey));
+          return <article className="mobile-profit-card" key={asset.assetKey}>
+            <header><div><strong>{assetTitle(asset)}</strong><small>{assetSymbol(asset)} · {categoryLabel(asset)}</small>{incompleteAssets.has(asset.assetKey) && <small className="data-gap-label">Kostenbasis unvollständig</small>}</div><strong className={result >= 0 ? "positive" : "negative"}>{eur(result)}</strong></header>
+            <small>{profitModes[profitMode].column} · <DataQuality /></small>
+            <details><summary>Gebühren & weitere Werte</summary><dl>
+              <div><dt>Verkäufe · brutto</dt><dd>{eur(asset.grossRealizedProfit)}</dd></div>
+              <div><dt>Gebühren inkl. Finanzierung</dt><dd>{eur(Number(asset.tradingFees || 0) + Number(asset.financingFees || 0))}</dd></div>
+              <div><dt>Gebuchte KESt</dt><dd>{eur(asset.estimatedTax)}</dd></div>
+              <div><dt>Gekauft / verkauft</dt><dd>{eur(asset.totalBoughtFiat)} / {eur(asset.totalSoldFiat)}</dd></div>
+              <div><dt>Restmenge</dt><dd>{num(asset.currentQuantity)}</dd></div>
+            </dl></details>
+            <footer><button className="secondary-button" onClick={() => onSelectAsset?.(asset)}>Asset-Details</button><button className="secondary-button" onClick={() => hidden ? addBackToSavedView(asset.assetKey) : removeFromSavedView(asset.assetKey)}>{hidden ? "Einblenden" : "Ausblenden"}</button></footer>
+          </article>;
+        })}
+      </div>
+      <div className="table-card profit-desktop-table">
+        <AdaptiveTable className="clean-table">
           <thead>
             <tr>{["Asset", profitModes[profitMode].column, "Brutto G/V", "Gebühren", "KESt", "Gekauft", "Verkauft", "Restmenge", "Käufe", "Verkäufe", "Gespeicherte Ansicht", "Details"].map(header => <th key={header}>{header}</th>)}</tr>
           </thead>
           <tbody>
-            {sortedAssets.map(asset => {
+            {pagedAssets.map(asset => {
               const profit = getProfitValue(asset, profitMode);
               const isOpen = open === asset.assetKey;
               const isHidden = hiddenSet.has(String(asset.assetKey));
@@ -307,12 +300,12 @@ export default function ProfitLossView({ onSelectAsset }) {
                   <tr className={isHidden ? "muted-row" : ""}>
                     <td>
                       <strong>{assetTitle(asset)}</strong>
-                      <div><span className="pill category-pill">{categoryLabel(asset)}</span></div>
-                      <div className="muted small">Symbol: {assetSymbol(asset)}</div>
+                      <small className="fee-detail-meta">{assetSymbol(asset)} · {categoryLabel(asset)}</small>
+                      {incompleteAssets.has(asset.assetKey) && <small className="data-gap-label">Kostenbasis unvollständig</small>}
                     </td>
                     <td className={profit >= 0 ? "positive strong" : "negative strong"}>{eur(profit)}</td>
                     <td className={Number(asset.grossRealizedProfit || 0) >= 0 ? "positive" : "negative"}>{eur(asset.grossRealizedProfit)}</td>
-                    <td>{eur(Number(asset.tradingFees || 0) + Number(asset.manualFees || 0))}</td>
+                    <td>{eur(Number(asset.tradingFees || 0) + Number(asset.financingFees || 0))}</td>
                     <td>{eur(asset.estimatedTax)}</td>
                     <td>{eur(asset.totalBoughtFiat)}</td>
                     <td>{eur(asset.totalSoldFiat)}</td>
@@ -325,7 +318,7 @@ export default function ProfitLossView({ onSelectAsset }) {
                           Wieder hinzufügen
                         </button>
                       ) : (
-                        <button className="danger-button small-button" onClick={() => removeFromSavedView(asset.assetKey)}>
+                        <button className="secondary-button small-button" onClick={() => removeFromSavedView(asset.assetKey)}>
                           Ausblenden
                         </button>
                       )}
@@ -347,8 +340,13 @@ export default function ProfitLossView({ onSelectAsset }) {
               );
             })}
           </tbody>
-        </table>
+        </AdaptiveTable>
       </div>
+
+      {pageCount > 1 && <nav className="account-pagination profit-pagination" aria-label="Asset-Seiten">
+        <span aria-live="polite">{currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, sortedAssets.length)} von {sortedAssets.length} Assets</span>
+        <div><button className="secondary-button" disabled={currentPage === 0} onClick={() => changePage(currentPage - 1)}>Zurück</button><span>Seite {currentPage + 1} / {pageCount}</span><button className="secondary-button" disabled={currentPage >= pageCount - 1} onClick={() => changePage(currentPage + 1)}>Weiter</button></div>
+      </nav>}
 
       {visible.length === 0 && (
         <div className="empty-state">
@@ -357,76 +355,6 @@ export default function ProfitLossView({ onSelectAsset }) {
         </div>
       )}
     </div>
-  );
-}
-
-function FeeAdjustmentPanel({ assets, entries, onAdd, onRemove }) {
-  const [assetKey, setAssetKey] = useState("");
-  const [assetSearch, setAssetSearch] = useState("");
-  const [assetSearchOpen, setAssetSearchOpen] = useState(false);
-  const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
-  const feeAssets = useMemo(() => {
-    const unique = new Map();
-    for (const asset of assets) {
-      const key = String(asset.assetKey || asset.underlyingSymbol || asset.name || "");
-      if (key && !unique.has(key)) unique.set(key, { key, label: `${assetTitle(asset)} (${key})` });
-    }
-    return [...unique.values()].sort((a, b) => a.label.localeCompare(b.label));
-  }, [assets]);
-  const matchingFeeAssets = useMemo(() => {
-    const query = assetSearch.trim().toLowerCase();
-    return feeAssets.filter(asset => !query || `${asset.label} ${asset.key}`.toLowerCase().includes(query)).slice(0, 12);
-  }, [assetSearch, feeAssets]);
-
-  function selectFeeAsset(asset) {
-    setAssetKey(asset.key);
-    setAssetSearch(asset.label);
-    setAssetSearchOpen(false);
-  }
-
-  function submit(event) {
-    event.preventDefault();
-    if (!assetKey) return;
-    onAdd({ assetKey, amount, note });
-    setAmount("");
-    setNote("");
-  }
-
-  return (
-    <section className="table-card fee-adjustment-card">
-      <div className="section-heading">
-        <div>
-          <h3>Eigene Gebühren hinzufügen</h3>
-          <span>z. B. Finanzierungsgebühren für Long-Positionen mit Hebel</span>
-        </div>
-        <span>{entries.length} Einträge</span>
-      </div>
-      <form className="fee-adjustment-form" onSubmit={submit}>
-        <div className="fee-asset-search">
-          <input className="table-input" type="search" value={assetSearch} placeholder="Position oder Asset suchen …" aria-label="Position oder Asset für Gebühr suchen" aria-expanded={assetSearchOpen} aria-controls="fee-asset-results" autoComplete="off" onFocus={() => setAssetSearchOpen(true)} onBlur={() => setAssetSearchOpen(false)} onChange={event => { setAssetSearch(event.target.value); setAssetKey(""); setAssetSearchOpen(true); }} onKeyDown={event => { if (event.key === "Enter" && matchingFeeAssets[0] && !assetKey) { event.preventDefault(); selectFeeAsset(matchingFeeAssets[0]); } else if (event.key === "Escape") { setAssetSearchOpen(false); event.currentTarget.blur(); } }} required />
-          {assetSearchOpen && <div className="fee-asset-results" id="fee-asset-results" role="listbox">{matchingFeeAssets.length ? matchingFeeAssets.map(asset => <button type="button" role="option" aria-selected={asset.key === assetKey} key={asset.key} onMouseDown={event => event.preventDefault()} onClick={() => selectFeeAsset(asset)}><strong>{asset.label}</strong></button>) : <p>Kein passendes Asset gefunden.</p>}</div>}
-        </div>
-        <input className="table-input" type="number" min="0.01" step="0.01" value={amount} onChange={event => setAmount(event.target.value)} placeholder="Gebühr in €" required />
-        <input className="table-input" value={note} onChange={event => setNote(event.target.value)} placeholder="Notiz, z. B. Funding 01.–07.09." />
-        <button className="primary-button" type="submit" disabled={!assetKey}>Gebühr hinzufügen</button>
-      </form>
-      {entries.length > 0 && (
-        <div className="details-table-wrap">
-          <table className="clean-table compact">
-            <thead><tr><th>Asset</th><th>Notiz</th><th>Gebühr</th><th /></tr></thead>
-            <tbody>{entries.map(entry => (
-              <tr key={entry.id}>
-                <td>{feeAssets.find(asset => asset.key === String(entry.assetKey))?.label || entry.assetKey}</td>
-                <td>{entry.note || "-"}</td>
-                <td className="strong">{eur(entry.amount)}</td>
-                <td><button className="danger-button small-button" onClick={() => onRemove(entry.id)}>Entfernen</button></td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-      )}
-    </section>
   );
 }
 
@@ -460,7 +388,7 @@ function buildCategorySummary(assets, mode = "realized") {
     item.grossRealizedProfit += Number(asset.grossRealizedProfit || 0);
     item.grossGains += Math.max(0, Number(asset.grossRealizedProfit || 0));
     item.grossLosses += Math.min(0, Number(asset.grossRealizedProfit || 0));
-    item.tradingFees += realizedTradingFees(asset) + Number(asset.manualFees || 0);
+    item.tradingFees += realizedTradingFees(asset);
     item.estimatedTax += Number(asset.estimatedTax || 0);
     const assetNetProfit = Number(asset.netRealizedProfit ?? asset.realizedProfit ?? 0);
     item.netRealizedProfit += assetNetProfit;
@@ -560,10 +488,10 @@ function Details({ asset }) {
     <div>
       <h3>Trade-Details: {assetTitle(asset)}</h3>
       <p className="muted">
-        Symbol: {assetSymbol(asset)} · Restliche Kostenbasis: {eur(asset.costBasis)} (ohne bereits separat ausgewiesene Kaufgebühren) · Trading-Gebühren: {eur(asset.tradingFees)} · Eigene Finanzierungsgebühren: {eur(asset.manualFees)} · Gebuchte KESt: {eur(asset.estimatedTax)}
+        Symbol: {assetSymbol(asset)} · Restliche Kostenbasis: {asset.costBasis == null ? "–" : eur(asset.costBasis)} {asset.averageEntrySource === "Bitpanda Portfolio API" ? "(laut Bitpanda)" : "(aus Trade-Historie, ohne separat ausgewiesene Kaufgebühren)"} · Trading-Gebühren: {eur(asset.tradingFees)} · Automatische Finanzierungsgebühren: {eur(asset.financingFees)} · Gebuchte KESt: {eur(asset.estimatedTax)}
       </p>
       <div className="details-table-wrap">
-        <table className="clean-table compact">
+        <AdaptiveTable className="clean-table compact">
           <thead>
             <tr>{["Datum", "Typ", "Menge", "Fiat", "Preis", "Brutto G/V", "Gebühr", "KESt", "Steuerquelle", "Netto G/V", "Monat", "Jahr"].map(header => <th key={header}>{header}</th>)}</tr>
           </thead>
@@ -584,7 +512,7 @@ function Details({ asset }) {
                   <td>{eur(trade.fiat)}</td>
                   <td>{trade.price || "-"}</td>
                   <td className={grossProfit == null ? "muted" : grossProfit >= 0 ? "positive" : "negative"}>{grossProfit == null ? "-" : eur(grossProfit)}</td>
-                  <td>{eur(trade.tradingFee)}</td>
+                  <td>{eur(Number(trade.tradingFee || 0) + Number(trade.financingFee || 0))}{Number(trade.financingFee || 0) > 0 && <small className="trade-tax-source">davon {eur(trade.financingFee)} Hebel-Finanzierung · automatisch</small>}</td>
                   <td>{trade.type === "sell" && trade.taxSource === "bitpanda_bookings" ? eur(trade.estimatedTax) : "-"}</td>
                   <td>{trade.type === "sell" ? trade.taxSource === "bitpanda_bookings" ? "Bitpanda · nach Erstattung" : "Nicht verfügbar" : "-"}</td>
                   <td className={profit == null ? "muted" : profit >= 0 ? "positive strong" : "negative strong"}>{profit == null ? "-" : eur(profit)}</td>
@@ -594,7 +522,7 @@ function Details({ asset }) {
               );
             })}
           </tbody>
-        </table>
+        </AdaptiveTable>
       </div>
 
     </div>
@@ -620,7 +548,7 @@ function RankingTable({ title, tone, items, mode }) {
       {items.length === 0 ? (
         <p className="muted ranking-empty">Keine Einträge in dieser Ansicht.</p>
       ) : (
-        <table className="clean-table compact">
+        <AdaptiveTable className="clean-table compact">
           <thead>
             <tr>
               <th>#</th>
@@ -646,12 +574,13 @@ function RankingTable({ title, tone, items, mode }) {
               );
             })}
           </tbody>
-        </table>
+        </AdaptiveTable>
       )}
     </section>
   );
 }
 
 function Metric({ title, value, tone }) {
-  return <div className="metric-card"><span>{title}</span><strong className={tone || ""}>{value}</strong></div>;
+  return <div className="metric-card"><span>{title}</span><strong className={tone || ""}>{value}</strong>
+      <DataQuality kind={value === "Nicht verfügbar" ? "unknown" : title.startsWith("Bezahlte") ? "reported" : "calculated"} /></div>;
 }

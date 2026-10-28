@@ -1,0 +1,8 @@
+version: "3.8"
+
+services:
+  bitpanda-dashboard:
+    image: bitpanda-dashboard:synology
+    build:
+      context: .
+      dockerfile: Dockerfile.synology

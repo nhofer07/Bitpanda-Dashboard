@@ -36,7 +36,7 @@ log.parent.mkdir(parents=True, exist_ok=True)
 agent.parent.mkdir(parents=True, exist_ok=True)
 agent.write_bytes(plistlib.dumps({
     'Label': label,
-    'ProgramArguments': ['/usr/bin/open', '-g', '-n', '-W', '-a', str(target), '--args', '--refresh-widgets'],
+    'ProgramArguments': [str(target / 'Contents/MacOS/Bitpanda Widget'), '--refresh-widgets'],
     'RunAtLoad': True,
     'StartCalendarInterval': [{'Minute': minute} for minute in range(0, 60, 5)],
     'ProcessType': 'Background',

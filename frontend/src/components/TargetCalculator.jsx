@@ -1,25 +1,8 @@
+import { formatCurrency, formatNumber, formatPercent } from "./formatters.js";
+import PageIntro from "./PageIntro.jsx";
+import LoadingState from "./LoadingState.jsx";
 import PageDescription from "./PageDescription.jsx";
 import { useEffect, useMemo, useState } from "react";
-
-function formatCurrency(value) {
-  return `${Number(value || 0).toLocaleString("de-DE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })} €`;
-}
-
-function formatNumber(value, digits = 8) {
-  return Number(value || 0).toLocaleString("de-DE", {
-    maximumFractionDigits: digits
-  });
-}
-
-function formatPercent(value) {
-  return `${Number(value || 0).toLocaleString("de-DE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}%`;
-}
 
 function toInputValue(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "";
@@ -241,20 +224,19 @@ export default function TargetCalculator({ data, loading, error }) {
     }
   }
 
-  if (loading) return <div className="loading-state">Lade Rechner...</div>;
+  if (loading) return <LoadingState>Lade Rechner …</LoadingState>;
   if (error) return <div className="error-box">{error}</div>;
 
   return (
-    <div>
-      <section className="hero-card calculator-hero">
+    <div className="calculator-view">
+      <PageIntro>
         <div>
-          <div className="eyebrow">Zielkurs Rechner</div>
-          <h2>Zielkurs berechnen</h2>
+
           <PageDescription summary="Wähle ein Asset und berechne den Kurs für deinen Zielgewinn oder den Gewinn bei einem Zielpreis.">
             Berechnet entweder den Kurs für deinen Zielgewinn oder den Gewinn, der bei deinem Zielpreis übrig bleibt. Der Rechner verwendet Kostenbasis und aktuellen Bitpanda-Kurs. Zukünftige Verkaufsgebühren, Spread und externe Steuern sind nicht enthalten. Für Krypto wird keine KESt gerechnet.
           </PageDescription>
         </div>
-      </section>
+      </PageIntro>
 
       <div className="calculator-grid">
         <section className="table-card calculator-card">
@@ -319,6 +301,7 @@ export default function TargetCalculator({ data, loading, error }) {
                 inputMode="decimal"
                 min="0"
                 step="any"
+                aria-label="Investitionsbetrag (€)"
                 value={investmentAmount}
                 onChange={event => updateInvestmentAmount(event.target.value)}
                 placeholder="z. B. 100"
@@ -332,6 +315,7 @@ export default function TargetCalculator({ data, loading, error }) {
                 type="number"
                 inputMode="decimal"
                 step="any"
+                aria-label="Anteile"
                 value={quantity}
                 onChange={event => updateQuantity(event.target.value)}
               />
@@ -431,7 +415,6 @@ export default function TargetCalculator({ data, loading, error }) {
           />
         </div>
       </section>
-
 
     </div>
   );

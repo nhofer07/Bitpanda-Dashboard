@@ -1,0 +1,30 @@
+[
+  {
+    "container": "app-content",
+    "before": "page-heading",
+    "after": "page-intro ",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "app-content",
+    "before": "page-intro ",
+    "after": "stats-grid cashflow-stats-grid",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "app-content",
+    "before": "stats-grid cashflow-stats-grid",
+    "after": "view-panel",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "app-content",
+    "before": "view-panel",
+    "after": "cashflow-columns",
+    "gap": 20,
+    "expected": 20
+  }
+]

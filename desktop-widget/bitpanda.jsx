@@ -11,8 +11,8 @@ export const className = `
   top: 45px; left: 30px; width: 170px;
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
   color: #f4f8f6;
-  .card { box-sizing: border-box; height: 170px; padding: 13px; border-radius: 22px; background: rgba(13, 29, 25, .94); border: 1px solid rgba(255,255,255,.13); box-shadow: 0 8px 24px rgba(0,0,0,.18); display: flex; flex-direction: column; overflow: hidden; }
-  header { display: flex; justify-content: space-between; align-items: center; height: 12px; flex-shrink: 0; }
+  .card { box-sizing: border-box; height: 170px; padding: 14px; border-radius: 22px; background: rgba(13, 29, 25, .94); border: 1px solid rgba(255,255,255,.13); box-shadow: 0 8px 24px rgba(0,0,0,.18); display: flex; flex-direction: column; overflow: hidden; }
+  header { display: flex; justify-content: space-between; align-items: baseline; height: 12px; flex-shrink: 0; }
   .brand { color: #7ff2bc; font-size: 9px; font-weight: 700; letter-spacing: 1px; }
   .badge { color: #a1b9ae; font-size: 8px; }
   h1 { font-size: 23px; line-height: 27px; font-weight: 650; letter-spacing: -.8px; margin: 9px 0 1px; white-space: nowrap; }
@@ -53,6 +53,6 @@ export const render = ({ data, error }) => {
       <polyline points={line} fill="none" stroke={color} strokeWidth="2.3" strokeLinejoin="round" strokeLinecap="round"/>
       <circle cx={last[0]} cy={last[1]} r="3.5" fill={color}/>
     </svg> : <div className="empty">{data ? points.length ? 'Aufzeichnung beginnt …' : 'Keine heutigen Daten.' : 'Portfolio wird geladen …'}</div>}
-    <footer title={notice || (!d.completeDay && points.length ? 'Verlauf seit Beginn der heutigen Aufzeichnung' : 'Heute · cashflow-bereinigt')}><span className={notice ? 'notice' : ''}>{notice ? d.offline ? 'Offline' : d.preview ? 'Vorschau' : 'Hinweis' : !d.completeDay && points.length ? `Ab ${time(points[0][0] * 1000)}` : 'Heute'}</span><span>{d.loadedAt ? new Date(d.loadedAt).toLocaleString('de-AT', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', timeZone:'Europe/Vienna' }) : '—'}</span></footer>
+    <footer title={notice || (!d.completeDay && points.length ? 'Verlauf seit Beginn der heutigen Aufzeichnung' : 'Heute · cashflow-bereinigt')}><span className={notice ? 'notice' : ''}>{notice ? d.offline ? 'Offline' : d.preview ? 'Vorschau' : 'Hinweis' : d.periodLabel ? d.periodLabel : !d.completeDay && points.length ? `Ab ${time(points[0][0] * 1000)}` : (d.periodLabel || 'Heute')}</span><span>{(d.chartLastPointAt || d.loadedAt) ? new Date(d.chartLastPointAt || d.loadedAt).toLocaleString('de-AT', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', timeZone:'Europe/Vienna' }) : '—'}</span></footer>
   </div>;
 };

@@ -1,0 +1,16 @@
+[
+  {
+    "container": "app-content",
+    "before": "page-heading",
+    "after": "settings-view",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "settings-view",
+    "before": "page-intro ",
+    "after": "settings-form",
+    "gap": 24,
+    "expected": 24
+  }
+]

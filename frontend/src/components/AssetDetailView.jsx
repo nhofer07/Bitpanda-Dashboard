@@ -1,29 +1,12 @@
+import AdaptiveTable from "./AdaptiveTable.jsx";
+import DataNote from "./DataNote.jsx";
+import { formatCurrency, formatNumber, formatPercent, formatDateTime } from "./formatters.js";
+import DataQuality from "./DataQuality.jsx";
 import MarketHistoryChart from "./MarketHistoryChart.jsx";
-
-function formatCurrency(value) {
-  return `${Number(value || 0).toLocaleString("de-DE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })} €`;
-}
-
-function formatNumber(value) {
-  return Number(value || 0).toLocaleString("de-DE", {
-    maximumFractionDigits: 8
-  });
-}
-
-function formatPercent(value) {
-  if (value === null || value === undefined) return "-";
-  return `${Number(value || 0).toLocaleString("de-DE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}%`;
-}
 
 function formatDate(time) {
   const date = time?.date_iso8601 || time;
-  return date ? new Date(date).toLocaleString("de-DE") : "-";
+  return formatDateTime(date);
 }
 
 function assetTitle(asset) {
@@ -45,8 +28,8 @@ export default function AssetDetailView({ asset, onBack, embedded = false, child
     );
   }
 
-  const unrealizedProfit = Number(asset.unrealizedProfit || 0);
-  const realizedProfit = Number(asset.realizedProfit || 0);
+  const unrealizedProfit = asset.unrealizedProfit == null ? null : Number(asset.unrealizedProfit);
+  const realizedProfit = asset.realizedProfit == null ? null : Number(asset.realizedProfit);
 
   return (
     <div className="asset-position-details">
@@ -65,28 +48,27 @@ export default function AssetDetailView({ asset, onBack, embedded = false, child
       </section>}
 
       {embedded && <h3>Deine Position · {assetTitle(asset)}</h3>}
-      <div className="info-box">
-        <strong>Datenbasis:</strong> Wallet-Bestand und Trade-Historie kommen von Bitpanda. Kostenbasis und Gewinn/Verlust werden aus diesen Trades nach Durchschnittskostenmethode berechnet. Ein manueller Sonderfall kann die Menge oder den Einstieg überschreiben.
-      </div>
+      <DataNote> Wallet-Bestand und Trade-Historie kommen von Bitpanda. Bestand, investierter Betrag und Positionswert werden bevorzugt aus der Bitpanda-Portfolio-API übernommen. Realisierte Gewinne werden aus den Trades und gebuchten Gebühren und Steuern berechnet. Eine Ersatzbewertung ist als solche gekennzeichnet.
+      </DataNote>
 
       <div className="stats-grid">
-        <Metric title="Aktueller Wert" value={asset.currentValue == null ? "–" : formatCurrency(asset.currentValue)} />
+        <Metric title="Aktueller Wert" value={asset.currentValue == null ? "–" : formatCurrency(asset.currentValue)} secondary={<DataQuality kind={asset.currentValue == null ? "unknown" : asset.priceSource === "Bitpanda Portfolio API" ? "reported" : "estimated"} />} />
         <Metric title="Bestand" value={formatNumber(asset.currentQuantity)} />
-        <Metric title="Bitpanda Preis" value={asset.currentPrice == null ? "-" : formatCurrency(asset.currentPrice)} />
+        <Metric title="Aktueller Kurs" value={asset.currentPrice == null ? "-" : formatCurrency(asset.currentPrice)} />
         <Metric
-          title="Unrealisiert"
-          value={`${formatCurrency(unrealizedProfit)} (${formatPercent(asset.unrealizedProfitPercent)})`}
+          title="Unrealisierter Gewinn / Verlust"
+          value={unrealizedProfit == null ? "Nicht verfügbar" : `${formatCurrency(unrealizedProfit)} (${formatPercent(asset.unrealizedProfitPercent)})`}
           tone={unrealizedProfit >= 0 ? "positive" : "negative"}
         />
         <Metric
-          title="Realisiert"
+          title="Gewinn / Verlust aus Verkäufen"
           value={formatCurrency(realizedProfit)}
           tone={realizedProfit >= 0 ? "positive" : "negative"}
         />
-        <Metric title="Ø Einstieg" value={formatCurrency(asset.averageRemainingCost)} />
+        <Metric title="Ø Einstieg" value={asset.averageRemainingCost == null ? "–" : formatCurrency(asset.averageRemainingCost)} secondary={<DataQuality kind={asset.averageRemainingCost == null ? "unknown" : asset.averageEntrySource === "Bitpanda Portfolio API" ? "reported" : "estimated"} />} />
       </div>
 
-      {!embedded && <MarketHistoryChart asset={{ symbol: asset.assetKey || asset.name, name: assetTitle(asset), category: asset.category || "other" }} />}
+      {!embedded && <MarketHistoryChart asset={{ symbol: asset.assetKey || asset.name, name: assetTitle(asset), category: asset.category || "other", chartSource: "bitpanda" }} trades={asset.trades || []} />}
 
       <div className="overview-grid">
         <section className="top-card">
@@ -116,7 +98,7 @@ export default function AssetDetailView({ asset, onBack, embedded = false, child
           <span>{(asset.trades || []).length} Trades</span>
         </div>
         <div className="details-table-wrap trade-history-table-wrap">
-        <table className="clean-table compact">
+        <AdaptiveTable className="clean-table compact">
           <thead>
             <tr>
               <th>Datum</th>
@@ -124,7 +106,7 @@ export default function AssetDetailView({ asset, onBack, embedded = false, child
               <th>Menge</th>
               <th>Fiat</th>
               <th>Preis</th>
-              <th>Trading-Gebühr</th>
+              <th>Gebühren inkl. Finanzierung</th>
               <th>KESt</th>
               <th>Gewinn / Verlust</th>
             </tr>
@@ -142,8 +124,8 @@ export default function AssetDetailView({ asset, onBack, embedded = false, child
                   </td>
                   <td>{formatNumber(trade.quantity)}</td>
                   <td>{formatCurrency(trade.fiat)}</td>
-                  <td>{trade.price || "-"}</td>
-                  <td>{Number(trade.tradingFee || 0) > 0 ? formatCurrency(trade.tradingFee) : "-"}</td>
+                  <td>{formatCurrency(trade.price)}</td>
+                  <td>{trade.tradingFee == null && trade.financingFee == null ? "–" : formatCurrency(Number(trade.tradingFee || 0) + Number(trade.financingFee || 0))}</td>
                   <td>
                     {trade.type !== "sell" || trade.estimatedTax == null || trade.taxSource === "unavailable" ? "-" : <>
                       {formatCurrency(trade.estimatedTax)}
@@ -157,18 +139,19 @@ export default function AssetDetailView({ asset, onBack, embedded = false, child
               );
             })}
           </tbody>
-        </table>
+        </AdaptiveTable>
         </div>
       </section>
     </div>
   );
 }
 
-function Metric({ title, value, tone }) {
+function Metric({ title, value, tone, secondary }) {
   return (
     <div className="metric-card">
       <span>{title}</span>
       <strong className={tone || ""}>{value}</strong>
+      {secondary && <div className="metric-secondary">{secondary}</div>}
     </div>
   );
 }

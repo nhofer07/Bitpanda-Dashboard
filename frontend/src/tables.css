@@ -1,0 +1,35 @@
+/* Width is decided from the actual rendered fields, independently of device type. */
+.dashboard-shell .adaptive-table { position: relative; width: 100%; min-width: 0; max-width: 100%; }
+.adaptive-table-measure { position: absolute; inset: 0 0 auto; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
+.dashboard-shell .adaptive-table-measure .clean-table { width: 100%; }
+.dashboard-shell .adaptive-table > .clean-table { max-width: 100%; }
+.dashboard-shell .adaptive-records { display: grid; gap: 10px; padding: 12px; min-width: 0; }
+.dashboard-shell .adaptive-record { min-width: 0; border: 1px solid var(--edge); border-radius: 12px; background: #17242a; }
+.dashboard-shell .adaptive-record > summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 12px 20px; padding: 16px; cursor: pointer; list-style: none; }
+.adaptive-record > summary::-webkit-details-marker { display: none; }
+.adaptive-record-identity, .adaptive-record-value { display: grid; min-width: 0; gap: 5px; }
+.adaptive-record-value { text-align: right; }
+.adaptive-record :is(.adaptive-record-identity, .adaptive-record-value) > small { font-size: 11px; color: var(--muted); font-weight: 400; }
+.adaptive-record :is(.adaptive-record-identity, .adaptive-record-value) > span { min-width: 0; font-size: 14px; font-weight: 500; }
+.adaptive-record-toggle { grid-column: 1/-1; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--accent); font-size: 12px; font-weight: 400; }
+.adaptive-record .record-close-label, .adaptive-record[open] .record-open-label { display: none; }
+.adaptive-record[open] .record-close-label { display: inline; }
+.adaptive-record[open] .adaptive-record-toggle > span:last-child { transform: rotate(180deg); }
+.dashboard-shell .adaptive-record > dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px 24px; padding: 16px; margin: 0; border-top: 1px solid var(--edge); }
+.adaptive-record dl > div { display: grid; gap: 6px; min-width: 0; align-content: start; }
+.adaptive-record dt, .adaptive-totals dt { color: var(--muted); font-size: 11px; font-weight: 400; }
+.adaptive-record dd, .adaptive-totals dd { min-width: 0; margin: 0; font-size: 13px; line-height: 1.6; }
+.dashboard-shell .adaptive-record :is(span, small, strong, button, dt, dd, p), .dashboard-shell .adaptive-totals :is(dt, dd, strong) { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.dashboard-shell .adaptive-record :is(select, input) { width: 100%; min-width: 0; max-width: 100%; }
+.adaptive-record .adaptive-row-action { margin: 0 16px 16px; }
+.adaptive-totals { padding: 16px; border: 1px solid var(--edge); border-radius: 12px; background: #1b3026; }
+.adaptive-totals dl { display: flex; flex-wrap: wrap; gap: 16px 24px; margin: 0; }
+.adaptive-totals dl > div { display: grid; gap: 5px; min-width: 0; flex: 1 1 150px; }
+.dashboard-shell :is(.details-table-wrap, .trade-history-table-wrap, .tax-table-scroll, .trade-table-scroll, .assets-table-scroll, .fusion-table-wrap, .allocation-table-wrap, .calendar-trades-scroll, .ranking-table-wrap) { min-width: 0; max-width: 100%; overflow-x: visible; }
+.dashboard-shell .adaptive-table > .clean-table :is(td, th) { overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .dashboard-shell .adaptive-records { padding: 10px; }
+  .dashboard-shell .adaptive-record > summary { gap: 12px; padding: 14px; }
+  .dashboard-shell .adaptive-record > dl { grid-template-columns: minmax(0, 1fr); padding: 14px; }
+  .adaptive-record-identity:only-child { grid-column: 1/-1; }
+}

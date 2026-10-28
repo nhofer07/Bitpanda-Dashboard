@@ -3,6 +3,7 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+COPY backend/*.js /app/backend/
 RUN npm run build
 
 FROM node:22-alpine

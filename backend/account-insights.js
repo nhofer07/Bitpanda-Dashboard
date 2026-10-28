@@ -1,3 +1,4 @@
+import { catalogCategory } from "./asset-identity.js";
 const REWARDS = new Set(['reward', 'passive_earn_reward', 'onetime_reward', 'earn_on_fiat_reward']);
 const SPECIAL = new Set(['swap', 'dust_swap', 'merger_crypto', 'earn_on_fiat_swap', 'stake', 'unstake']);
 const LABELS = { advanced_trading_reserve: 'Fusion-Guthaben reservieren', advanced_trading_release: 'Fusion-Reservierung freigeben', stock_exchange_reserve: 'Wertpapier-Guthaben reservieren', stock_exchange_release: 'Wertpapier-Reservierung freigeben', card_reserve: 'Kartenzahlung reservieren', securities_margin_trading_reserve_long: 'Guthaben für Wertpapier-Hebel reservieren', buy: 'Kauf', sell: 'Verkauf', advanced_trading_buy: 'Fusion-Kauf', advanced_trading_sell: 'Fusion-Verkauf', stock_exchange_buy: 'Wertpapierkauf', stock_exchange_sell: 'Wertpapierverkauf', reward: 'Staking-Ertrag', passive_earn_reward: 'Passives Earn', onetime_reward: 'Bonus', earn_on_fiat_reward: 'Cash-Plus-Ertrag', ca_dividend: 'Dividende', dividend: 'Dividende', stake: 'Staking-Umbuchung', unstake: 'Staking-Rückbuchung', swap: 'Tausch', dust_swap: 'Kleinstbeträge umwandeln', merger_crypto: 'Krypto-Zusammenlegung', earn_on_fiat_swap: 'Cash-Plus-Umbuchung', securities_tax_refund: 'Steuererstattung', securities_tax_debt_settlement: 'Steuernachforderung bezahlt', securities_tax_debt_record: 'Steuernachforderung vorgemerkt', refund: 'Erstattung', reversal: 'Storno', margin_trading_close_long: 'Krypto-Hebelposition schließen', margin_trading_open_long: 'Krypto-Hebelposition öffnen', securities_margin_trading_close_long: 'Wertpapier-Hebelposition schließen', securities_margin_trading_open_long: 'Wertpapier-Hebelposition öffnen', withdrawal: 'Auszahlung', deposit: 'Einzahlung', card_debit: 'Kartenzahlung', card_credit: 'Kartengutschrift', savings_plan: 'Sparplan' };
@@ -9,7 +10,7 @@ const isDebt = owner => /credit|debt/.test(owner || '');
 
 export function buildAccountInsights(operations, { eurCurrencyId, trades = [], assets = [], currencies = [], cryptoTransactions = [], fiatTransactions = [], portfolio = [], portfolioError = null, metadataErrors = [] }) {
   if (!eurCurrencyId) throw new Error('EUR-Währung für Kontodaten fehlt.');
-  const catalog = new Map([...assets, ...currencies].map(item => [item.id, { symbol: item.symbol, name: item.name || item.symbol, isAsset: assets.some(a => a.id === item.id) }]));
+  const catalog = new Map([...assets, ...currencies].map(item => [item.id, { symbol: item.symbol, name: item.name || item.symbol, category: catalogCategory(item), isin: item.isin || null, isAsset: assets.some(a => a.id === item.id) }]));
   catalog.set(eurCurrencyId, { symbol: 'EUR', name: 'Euro', isAsset: false });
   const tradeMap = new Map(trades.map(t => [t.id, t]));
   const legacy = new Map([...cryptoTransactions, ...fiatTransactions].map(t => [t.id, t.attributes || {}]));
@@ -57,6 +58,7 @@ export function buildAccountInsights(operations, { eurCurrencyId, trades = [], a
   const costs = [], sourceTax = [], rewards = [];
   const matchedTradeFees = new Set();
   const tradeFees = new Map(trades.map(t => [t.id, finite(typeof t.attributes?.fee === 'object' ? t.attributes.fee?.attributes?.fee_amount_in_fiat : t.attributes?.fee)]));
+  const financingBookings = new Map(trades.flatMap(trade => (trade.attributes?.financingFeeBookings || []).map(fee => [fee.transactionId, { ...fee, tradeId: trade.id }])));
   const operationAsset = operation => {
     const trade = (operation?.transactions || []).map(t => tradeMap.get(t.trade?.trade_id)).find(t => t && !['BCPEUR', 'EURCV'].includes(t.attributes?.cryptocoin_symbol));
     return trade?.attributes?.cryptocoin_symbol || null;
@@ -66,6 +68,16 @@ export function buildAccountInsights(operations, { eurCurrencyId, trades = [], a
     const entry = legacy.get(row.id);
     // The historical value must refer to this exact debit, never today's price.
     if (!embedded && finite(entry?.amount_eur) != null && Math.abs(Math.abs(finite(entry.amount) || 0) - Math.abs(amount)) < 0.00000002) return { eurAmount: Math.abs(finite(entry.amount_eur)) * Math.sign(amount), eurSource: 'API · historischer EUR-Wert' };
+    if (embedded && !row.isDebt && finite(entry?.amount_eur) != null && Math.abs(finite(entry.amount) || 0) > 0) {
+      const nativeAmount = Math.abs(finite(entry.amount));
+      const gross = Math.abs(row.amount || 0), net = Math.abs(row.delta || 0);
+      // A matching receipt supplies a historical conversion rate for this
+      // exact asset movement; never use a current market quote for old fees.
+      const sameUnit = !entry.cryptocoin_symbol || entry.cryptocoin_symbol === row.symbol;
+      if (sameUnit && [gross, net].some(value => Math.abs(nativeAmount - value) <= Math.max(1e-12, nativeAmount * 1e-8))) {
+        return { eurAmount: amount * Math.abs(finite(entry.amount_eur)) / nativeAmount, eurSource: 'Berechnet · historischer EUR-Buchungskurs' };
+      }
+    }
     return { eurAmount: null, eurSource: null };
   };
   for (const row of ledger) {
@@ -87,15 +99,16 @@ export function buildAccountInsights(operations, { eurCurrencyId, trades = [], a
     if (!isStandalone && !isEmbedded) continue;
     if (row.amount == null) continue;
     const costAmount = isStandalone ? amount * (costRefund ? -1 : 1) : row.feeAmount;
-    const value = eurValue(row, costAmount, !isStandalone);
-    let includedTradeId = null;
+    const financing = financingBookings.get(row.id);
+    const value = financing ? { eurAmount: financing.eurAmount, eurSource: financing.source } : eurValue(row, costAmount, !isStandalone);
+    let includedTradeId = financing?.tradeId || null;
     if (isStandalone && !costRefund && value.eurAmount != null && !row.isDebt) {
       for (const t of operation?.transactions || []) {
         const tradeId = t.trade?.trade_id, fee = tradeFees.get(tradeId);
         if (fee > 0 && !matchedTradeFees.has(tradeId) && Math.abs(fee - value.eurAmount) < 0.005) { includedTradeId = tradeId; matchedTradeFees.add(tradeId); break; }
       }
     }
-    const category = includedTradeId ? 'trade' : /margin/.test(row.operationType) ? 'leverage' : REWARDS.has(row.operationType) ? 'earn' : /withdrawal|deposit/.test(row.operationType) ? 'transfer' : /swap/.test(row.operationType) ? 'swap' : 'other';
+    const category = financing ? 'leverage' : includedTradeId ? 'trade' : /margin/.test(row.operationType) ? 'leverage' : REWARDS.has(row.operationType) ? 'earn' : /withdrawal|deposit/.test(row.operationType) ? 'transfer' : /swap/.test(row.operationType) ? 'swap' : 'other';
     costs.push({ ...row, id: `${row.id}:${isStandalone ? 'debit' : 'embedded'}`, transactionId: row.id, refund: costRefund, amount: costAmount, category, embedded: !isStandalone, includedTradeId, relatedAsset: operationAsset(operation), ...value });
   }
   const rewardGroups = new Map();
@@ -110,7 +123,7 @@ export function buildAccountInsights(operations, { eurCurrencyId, trades = [], a
     const info = unit(p.asset_id);
     // Only EUR values may be shown as EUR; preserve unavailable fields as null.
     const euro = value => unitId(value) === eurCurrencyId ? finite(value?.value) : null;
-    return { assetId: p.asset_id, symbol: info.symbol, name: info.name, assetKey: info.isAsset ? info.symbol : null, balance: finite(p.balance?.value), availableBalance: finite(p.available_balance?.value), investedAmount: euro(p.invested_amount), averageBuyPrice: euro(p.average_buy_price), currentValue: euro(p.currency_balance), totalReturn: euro(p.total_return), totalReturnPercent: finite(p.total_return_percent) };
+    return { assetId: p.asset_id, symbol: info.symbol, name: info.name, category: info.category, isin: info.isin, assetKey: info.isAsset ? info.symbol : null, balance: finite(p.balance?.value), availableBalance: finite(p.available_balance?.value), investedAmount: euro(p.invested_amount), averageBuyPrice: euro(p.average_buy_price), currentValue: euro(p.currency_balance), totalReturn: euro(p.total_return), totalReturnPercent: finite(p.total_return_percent) };
   });
   const extras = costs.filter(c => !c.includedTradeId);
   const checkCounts = ledger.reduce((counts, row) => { counts[row.balanceCheck]++; return counts; }, { matched: 0, difference: 0, unverified: 0 });

@@ -1,3 +1,7 @@
+import AdaptiveTable from "./AdaptiveTable.jsx";
+import DataNote from "./DataNote.jsx";
+import PageIntro from "./PageIntro.jsx";
+import LoadingState from "./LoadingState.jsx";
 import { useMemo, useState } from "react";
 import "./performanceCalendar.css";
 import { buildPortfolioDays, buildSalesDays, calendarDate, monthCells } from "./performanceCalendar.js";
@@ -28,18 +32,18 @@ export default function PerformanceCalendar({ data, loading, error, cashflowOver
     const [year, number] = month.split("-").map(Number);
     changeMonth(new Date(Date.UTC(year, number - 1 + offset, 1)).toISOString().slice(0, 7));
   }
-  if (loading) return <div className="loading-state">Kalender wird geladen …</div>;
+  if (loading) return <LoadingState>Kalender wird geladen …</LoadingState>;
   if (error) return <div className="error-box">{error}</div>;
 
   return <div className="performance-calendar">
-    <section className="hero-card">
-      <div><div className="eyebrow">Dein Ergebnis Tag für Tag</div><h2>Gewinnkalender</h2><p>Grüne Tage zeigen Gewinne, rote Tage Verluste. Wähle einen Tag für die Details.</p></div>
+    <PageIntro>
+      <div><p>Grüne Tage zeigen Gewinne, rote Tage Verluste. Wähle einen Tag für die Details.</p></div>
       <div className="segmented-control" aria-label="Kalenderansicht">
         <button className={mode === "portfolio" ? "active" : ""} aria-pressed={mode === "portfolio"} onClick={() => setMode("portfolio")}>Portfolioentwicklung</button>
         <button className={mode === "sales" ? "active" : ""} aria-pressed={mode === "sales"} onClick={() => setMode("sales")}>Verkäufe · Netto</button>
       </div>
-    </section>
-    <p className="calendar-explanation">{mode === "portfolio" ? "Tägliche Portfolioentwicklung inklusive Guthaben, bereinigt um Ein- und Auszahlungen sowie andere zugeordnete Cashflows. Verkaufserlöse werden nicht als zusätzlicher Gewinn gezählt." : "Netto-Gewinn oder -Verlust aus Verkäufen nach Kauf- und Verkaufsgebühren sowie KESt. Tage ohne Verkäufe bleiben neutral."}</p>
+    </PageIntro>
+    <DataNote title="Berechnung der Tageswerte">{mode === "portfolio" ? "Tägliche Portfolioentwicklung inklusive Guthaben, bereinigt um Ein- und Auszahlungen sowie andere zugeordnete Cashflows. Verkaufserlöse werden nicht als zusätzlicher Gewinn gezählt." : "Netto-Gewinn oder -Verlust aus Verkäufen nach Kauf- und Verkaufsgebühren sowie KESt. Tage ohne Verkäufe bleiben neutral."}</DataNote>
     <section className="table-card calendar-card">
       <div className="section-heading calendar-heading">
         <div><span className="eyebrow">{mode === "portfolio" ? "Portfolioentwicklung" : "Realisierte Verkaufsergebnisse"}</span><h3>{monthLabel}</h3></div>
@@ -66,12 +70,14 @@ export default function PerformanceCalendar({ data, loading, error, cashflowOver
           const result = day?.gain != null ? signedMoney(day.gain) : mode === "sales" && !day ? "Keine Verkäufe" : "Keine Tagesdaten";
           return <button key={key} className={`calendar-day calendar-day-${dayTone}${key === selectedDay ? " selected" : ""}${key === today ? " today" : ""}`} aria-label={`${dateLabel(key)}: ${future ? "Zukünftiger Tag" : result}`} aria-pressed={key === selectedDay} disabled={future} onClick={() => setSelectedDay(key)}>
             <span className="calendar-day-number">{Number(key.slice(-2))}{key === today && <i aria-hidden="true" />}</span>
-            <strong>{day?.gain != null ? signedMoney(day.gain) : "–"}</strong>
+            <strong className="calendar-full-value">{day?.gain != null ? signedMoney(day.gain) : "–"}</strong>
+            <strong className="calendar-compact-value" aria-hidden="true">{day?.gain == null ? "–" : `${day.gain > 0 ? "+" : ""}${new Intl.NumberFormat("de-DE", { notation: "compact", maximumFractionDigits: 0 }).format(day.gain)}`}</strong>
             <small>{day ? mode === "sales" ? `${day.count} ${day.count === 1 ? "Verkauf" : "Verkäufe"}` : day.gain == null ? "Unvollständig" : percent(day.percent) : ""}</small>
             {mode === "portfolio" && day?.partial && day.gain != null && <small className="calendar-partial">Teilzeitraum</small>}
           </button>;
         })}
       </div>
+      <p className="calendar-mobile-hint">Tageswerte in Euro · gerundet. Wähle einen Tag für genaue Beträge und Details.</p>
       <div className="calendar-legend"><span><i className="positive" />Gewinn</span><span><i className="negative" />Verlust</span><span><i className="neutral" />{mode === "sales" ? "Keine Verkäufe oder ausgeglichen" : "Ausgeglichen oder keine Daten"}</span></div>
       {mode === "portfolio" && <p className="calendar-note">{firstRecorded ? `Portfolioaufzeichnung ab ${dateLabel(firstRecorded)}. ` : "Noch keine Portfolioaufzeichnung vorhanden. "}Fehlende Tage werden nicht rückwirkend geschätzt. Bei einem Teilzeitraum beginnt die Berechnung mit dem ersten verfügbaren Tagesstand.</p>}
       {mode === "sales" && <p className="calendar-note">Manuell ergänzte Finanzierungsgebühren werden hier nicht einzelnen Verkaufstagen zugeordnet.</p>}
@@ -86,7 +92,7 @@ export default function PerformanceCalendar({ data, loading, error, cashflowOver
         {selected.partial && <p className="source-note">Für den Tagesbeginn fehlt ein Vergleichsstand. Angezeigt wird die Entwicklung im erfassten Teilzeitraum.</p>}
       </div> : <p className="calendar-detail-content muted">Für diesen Tag liegen keine Portfolioaufzeichnungen vor.</p> : selected ? <>
         {selected.missing > 0 && <p className="calendar-detail-content muted">Für {selected.missing} Verkäufe fehlt ein Ergebnis. Dieser Tag bleibt neutral, bis vollständige Daten vorliegen.</p>}
-        <div className="calendar-trades-scroll"><table className="clean-table compact"><thead><tr><th>Asset</th><th>Uhrzeit</th><th>Menge</th><th>Verkaufserlös</th><th>Netto G/V</th></tr></thead><tbody>{selected.trades.map((trade, index) => <tr key={`${trade.assetKey}-${trade.id || index}`}><td>{trade.assetName}<small className="asset-cell-note">{trade.assetKey}</small></td><td>{new Date(trade.time.date_iso8601).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Vienna" })}</td><td>{Number(trade.quantity || 0).toLocaleString("de-AT", { maximumFractionDigits: 8 })}</td><td>{money(trade.fiat || 0)}</td><td className={tone(trade.realizedProfit)}>{trade.realizedProfit == null ? "–" : signedMoney(Number(trade.realizedProfit))}</td></tr>)}</tbody></table></div>
+        <div className="calendar-trades-scroll"><AdaptiveTable className="clean-table compact"><thead><tr><th>Asset</th><th>Uhrzeit</th><th>Menge</th><th>Verkaufserlös</th><th>Netto G/V</th></tr></thead><tbody>{selected.trades.map((trade, index) => <tr key={`${trade.assetKey}-${trade.id || index}`}><td>{trade.assetName}<small className="asset-cell-note">{trade.assetKey}</small></td><td>{new Date(trade.time.date_iso8601).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Vienna" })}</td><td>{Number(trade.quantity || 0).toLocaleString("de-AT", { maximumFractionDigits: 8 })}</td><td>{money(trade.fiat || 0)}</td><td className={tone(trade.realizedProfit)}>{trade.realizedProfit == null ? "–" : signedMoney(Number(trade.realizedProfit))}</td></tr>)}</tbody></AdaptiveTable></div>
       </> : <p className="calendar-detail-content muted">An diesem Tag gab es keine Verkäufe.</p>}
     </section>}
   </div>;

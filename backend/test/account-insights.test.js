@@ -88,3 +88,16 @@ test('fee refunds reduce additional costs without being confused with tax refund
   assert.equal(result.sourceTax.totalPaid, 0);
   assert.equal(result.rewards.length, 0);
 });
+
+test('embedded token fees use the exact receipt historical rate and keep unmatched amounts unvalued', () => {
+  const reward = tx('reward-eth', 1, { currency_id: undefined, asset_id: 'eth', asset_amount: { value: '1', asset_id: 'eth' }, fee_amount: { value: '.2', asset_id: 'eth' }, flow: 'INCOMING' });
+  const inputs = { ...options, cryptoTransactions: [{ id: 'reward-eth', attributes: { amount: '.8', amount_eur: '1600', cryptocoin_symbol: 'ETH' } }] };
+  const result = buildAccountInsights([op('reward', 'reward', reward)], inputs);
+  assert.equal(result.costs[0].eurAmount, 400);
+  assert.equal(result.costs[0].eurSource, 'Berechnet · historischer EUR-Buchungskurs');
+  inputs.cryptoTransactions[0].attributes.amount = '.7';
+  assert.equal(buildAccountInsights([op('reward', 'reward', reward)], inputs).costs[0].eurAmount, null);
+  inputs.cryptoTransactions[0].attributes.amount = '.8';
+  inputs.cryptoTransactions[0].attributes.cryptocoin_symbol = 'BTC';
+  assert.equal(buildAccountInsights([op('reward', 'reward', reward)], inputs).costs[0].eurAmount, null);
+});

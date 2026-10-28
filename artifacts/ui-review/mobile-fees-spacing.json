@@ -1,0 +1,37 @@
+[
+  {
+    "container": "app-content",
+    "before": "page-heading",
+    "after": "fees-view",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "fees-view",
+    "before": "page-intro ",
+    "after": "section-shortcuts",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "fees-view",
+    "before": "section-shortcuts",
+    "after": "table-card account-costs-panel",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "fees-view",
+    "before": "table-card account-costs-panel",
+    "after": "table-card",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "fees-view",
+    "before": "table-card",
+    "after": "table-card",
+    "gap": 20,
+    "expected": 20
+  }
+]

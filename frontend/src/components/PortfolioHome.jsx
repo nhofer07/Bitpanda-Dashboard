@@ -1,35 +1,15 @@
-import { useEffect, useState } from "react";
-import { feeAdjustmentTotal, readProfitFeeAdjustments } from "./profitFeeAdjustments.js";
+import AdaptiveTable from "./AdaptiveTable.jsx";
+import { formatCurrency, formatNumber, formatPercent } from "./formatters.js";
+import DataQuality from "./DataQuality.jsx";
+import { positionDayChange as calculatePositionDayChange, usablePositionDayHistory } from "./positionDayChange.js";
+import LoadingState from "./LoadingState.jsx";
+import { useEffect, useRef, useState } from "react";
 import { buildCashflowTotals } from "./helpers.js";
 import useMarketHistoryRefresh from "./useMarketHistoryRefresh.js";
 import { loadMarketHistorySnapshot, marketDateLabel } from "./marketHistory.js";
 import PortfolioValueChart from "./PortfolioValueChart.jsx";
 import { readMarketWatchlist, writeMarketWatchlist } from "./marketWatchlist.js";
 
-function formatCurrency(value) {
-  return `${Number(value || 0).toLocaleString("de-DE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })} €`;
-}
-
-function formatNumber(value) {
-  return Number(value || 0).toLocaleString("de-DE", {
-    maximumFractionDigits: 8
-  });
-}
-
-function formatPercent(value) {
-  if (value === null || value === undefined) return "-";
-  return `${Number(value || 0).toLocaleString("de-DE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}%`;
-}
-
-function formatDate(value) {
-  return value ? new Date(value).toLocaleString("de-DE") : "-";
-}
 
 function assetTitle(asset) {
   return asset?.displayName || asset?.name || asset?.assetKey || "-";
@@ -48,26 +28,72 @@ const ALLOCATION_COLORS = {
   other: "#8ea0ad"
 };
 
+const POSITION_CATEGORIES = [
+  { key: "crypto", label: "Krypto" },
+  { key: "etf", label: "ETFs" },
+  { key: "stock", label: "Aktien" },
+  { key: "metal", label: "Edelmetalle" },
+  { key: "other", label: "Sonstige" }
+];
+
+function positionCategory(position) {
+  return POSITION_CATEGORIES.some(category => category.key === position.category) ? position.category : "other";
+}
+
 function allocationColor(category) {
   return ALLOCATION_COLORS[category] || ALLOCATION_COLORS.other;
 }
 
-export default function PortfolioHome({ data, loading, error, refreshing, onRefresh, onSelectAsset, cashflowOverrides = {} }) {
+export default function PortfolioHome({ data, loading, error, onSelectAsset, cashflowOverrides = {} }) {
+  const positionsRef = useRef(null);
   const [watchlist, setWatchlist] = useState(readMarketWatchlist);
+  const [selectedPositionCategory, setSelectedPositionCategory] = useState("all");
   const portfolio = data?.portfolio || {};
   const liquidBalance = portfolio.liquidBalance || {};
   const positions = data?.openPositions || [];
+  const positionGroups = POSITION_CATEGORIES.map(category => ({
+    ...category,
+    positions: positions.filter(position => positionCategory(position) === category.key)
+  })).filter(group => group.positions.length)
+    .map(group => ({
+      ...group,
+      totalValue: group.positions.reduce((total, position) => total + Number(position.currentValue || 0), 0)
+    }))
+    .sort((a, b) => b.totalValue - a.totalValue);
+  const activePositionCategory = positionGroups.some(group => group.key === selectedPositionCategory) ? selectedPositionCategory : "all";
   const profitAssets = data?.profitLoss?.assets || [];
-  // These optional entries are added on the profit/loss page. They live only
-  // in this browser, so apply them here as well to keep both views identical.
-  const feeAdjustments = readProfitFeeAdjustments().filter(entry => String(entry.assetKey || "").toUpperCase() !== "BCPEUR");
-  const cache = data?.cache || {};
-  const allocation = buildAllocation(positions, liquidBalance, profitAssets, feeAdjustments);
+  const allocation = buildAllocation(positions, liquidBalance, profitAssets);
   const marketHistoryRefreshKey = useMarketHistoryRefresh();
   const adjustedFiatNet = buildCashflowTotals(data?.transactions || [], cashflowOverrides).fiatNet;
-  const accountReturn = Number(portfolio.totalValue || 0) - adjustedFiatNet;
-  const accountReturnPercent = adjustedFiatNet > 0 ? accountReturn / adjustedFiatNet * 100 : null;
+  const accountReturn = portfolio.totalValue == null ? null : Number(portfolio.totalValue) - adjustedFiatNet;
+  const accountReturnPercent = accountReturn != null && adjustedFiatNet > 0 ? accountReturn / adjustedFiatNet * 100 : null;
   const watchedAssets = watchlist.map(item => ({ ...item, assetKey: item.symbol, displayName: item.name }));
+
+  function categoryNavigationProps(category) {
+    const key = positionCategory({ category });
+    if (category === "cash" || !positionGroups.some(group => group.key === key)) return {};
+    const navigate = () => {
+      setSelectedPositionCategory(key);
+      positionsRef.current?.focus({ preventScroll: true });
+      positionsRef.current?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+        block: "start"
+      });
+    };
+    return {
+      role: "button",
+      tabIndex: 0,
+      "aria-label": `${POSITION_CATEGORIES.find(group => group.key === key).label}: offene Positionen anzeigen`,
+      "aria-controls": "open-positions",
+      onClick: navigate,
+      onKeyDown: event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          navigate();
+        }
+      }
+    };
+  }
 
   function removeFromWatchlist(symbol) {
     setWatchlist(current => {
@@ -77,7 +103,7 @@ export default function PortfolioHome({ data, loading, error, refreshing, onRefr
     });
   }
 
-  if (loading) return <div className="loading-state">Lade Portfolio...</div>;
+  if (loading) return <LoadingState>Lade Portfolio …</LoadingState>;
   if (error) return <div className="error-box">{error}</div>;
 
   return (
@@ -85,12 +111,13 @@ export default function PortfolioHome({ data, loading, error, refreshing, onRefr
       <section className="hero-card portfolio-hero">
         <div className="portfolio-balance">
           <div className="eyebrow">Dein Portfolio</div>
-          <h2>{formatCurrency(portfolio.totalValue)}</h2>
+          <h2>{portfolio.totalValue == null ? "Nicht verfügbar" : formatCurrency(portfolio.totalValue)}</h2>
+          <DataQuality kind={data?.cache?.status === "local-preview" ? "stale" : "calculated"}>Gesamtwert aus Bitpanda-Beständen</DataQuality>
           <p>Gesamtwert inklusive Fiat-Wallet und Cash Plus</p>
         </div>
         <div className="portfolio-balance-details">
           <div className="hero-status liquid-status">
-            <span>Verfügbares Guthaben</span>
+            <span>Guthaben inkl. Cash Plus</span>
             <strong>{formatCurrency(liquidBalance.totalValue)}</strong>
             <small>Fiat {formatCurrency(liquidBalance.fiatValue)} · Cash Plus {formatCurrency(liquidBalance.cashPlusValue)}</small>
           </div>
@@ -100,45 +127,36 @@ export default function PortfolioHome({ data, loading, error, refreshing, onRefr
             <small>Assets in deinem Portfolio</small>
           </div>
         </div>
-        <div className="portfolio-sync">
-          <div className="portfolio-sync-status">
-            <span className={`portfolio-status-dot${cache.status === "local-preview" ? " is-preview" : ""}`} aria-hidden="true" />
-            <span>{cache.status === "local-preview" ? "Lokale Vorschau" : "Datenstand"} · <time dateTime={data?.loadedAt}>{formatDate(data?.loadedAt)}</time></span>
-          </div>
-          <button className="secondary-button portfolio-refresh" onClick={onRefresh} disabled={refreshing}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5.7 7a7 7 0 0 1 11.5-2L20 8M4 16l2.8 3A7 7 0 0 0 18.3 17" /></svg>
-            {refreshing ? "Aktualisiere …" : "Aktualisieren"}
-          </button>
-        </div>
+
       </section>
 
-      <details className="portfolio-metric-help">
-        <summary>Wie werden die Kennzahlen berechnet?</summary>
-        <p>„Investiert“ ist der aktuelle Marktwert offener Positionen. „Unrealisiert“ ist aktueller Marktwert minus restliche Kostenbasis. „Fiat Netto“ ist Einzahlungen minus Auszahlungen (inklusive Ausgaben) minus Transfers auf andere Konten, gemäß deiner Buchungszuordnung. Rückerstattungen und ignorierte Buchungen sind darin nicht enthalten. „Gesamtrendite“ ist Gesamtwert minus Fiat Netto; sie ist keine offizielle Bitpanda-Performancekennzahl.</p>
-      </details>
-
       <div className="stats-grid portfolio-stats">
-        <Metric title="Investiert" value={formatCurrency(portfolio.investedValue ?? portfolio.totalValue)} featured />
+        <Metric title="Marktwert der Positionen" value={formatCurrency(portfolio.investedValue)} featured />
         <Metric
-          title="Gesamtrendite"
+          title="Ergebnis gegenüber Netto-Einzahlungen"
           value={formatCurrency(accountReturn)}
-          secondary={formatPercent(accountReturnPercent)}
+          secondary={accountReturnPercent == null ? "Prozent nicht verfügbar" : `${formatPercent(accountReturnPercent)} der Netto-Einzahlungen`}
           tone={accountReturn >= 0 ? "positive" : "negative"}
           featured
         />
         <Metric
-          title="Unrealisiert"
-          value={formatCurrency(portfolio.unrealizedProfit)}
+          title="Unrealisierter Gewinn / Verlust"
+          value={formatCurrency(portfolio.unrealizedProfit)} quality={portfolio.unrealizedProfit == null ? "unknown" : "calculated"}
           secondary={formatPercent(portfolio.unrealizedProfitPercent)}
           tone={Number(portfolio.unrealizedProfit || 0) >= 0 ? "positive" : "negative"}
         />
-        <Metric title="Fiat Netto" value={formatCurrency(adjustedFiatNet)} />
-        <Metric title="Dividenden" value={formatCurrency(portfolio.dividends)} />
-        <Metric title="Bezahlte KESt aus Verkäufen" value={data?.paidTax?.available ? formatCurrency(data.paidTax.salesPaid) : "Nicht verfügbar"} secondary="Alle Jahre · nach Erstattungen" />
+        <Metric title="Netto-Einzahlungen" value={formatCurrency(adjustedFiatNet)} />
+        <Metric title="Dividenden" value={formatCurrency(portfolio.dividends)} quality={portfolio.dividends == null ? "unknown" : "reported"} />
+        <Metric title="Bezahlte KESt aus Verkäufen" value={data?.paidTax?.available ? formatCurrency(data.paidTax.salesPaid) : "Nicht verfügbar"} secondary="Alle Jahre · nach Erstattungen" quality={data?.paidTax?.available ? "reported" : "unknown"} />
       </div>
 
-      {data?.portfolioHistoryWarning && <div className="warning-box" role="status">Chart-Aufzeichnung pausiert: {data.portfolioHistoryWarning} Der Verlauf zeigt die zuletzt vollständig erfassten Werte.</div>}
-      <PortfolioValueChart snapshots={data?.snapshots} currentValue={data?.portfolioHistoryWarning ? undefined : portfolio.totalValue} loadedAt={data?.loadedAt} historyStartedAt={data?.portfolioHistoryStartedAt} transactions={data?.transactions} cashflowOverrides={cashflowOverrides} />
+      <details className="portfolio-metric-help">
+        <summary>Wie werden die Kennzahlen berechnet?</summary>
+        <p>„Marktwert der Positionen“ ist der aktuelle Wert offener Positionen. „Unrealisierter Gewinn / Verlust“ ist aktueller Marktwert minus restliche Kostenbasis. „Fiat Netto“ ist Einzahlungen minus Auszahlungen (inklusive Ausgaben) minus Transfers auf andere Konten, gemäß deiner Buchungszuordnung. Rückerstattungen und ignorierte Buchungen sind darin nicht enthalten. „Ergebnis gegenüber Netto-Einzahlungen“ ist Gesamtwert minus Fiat Netto. Der Prozentwert bezieht sich auf die Netto-Einzahlungen; er ist keine zeitgewichtete Rendite.</p>
+      </details>
+
+      {data?.portfolioHistoryWarning && !data?.portfolioApiHistory?.available && <div className="warning-box" role="status">Chart-Aufzeichnung pausiert: {data.portfolioHistoryWarning} Der Verlauf zeigt die zuletzt vollständig erfassten Werte.</div>}
+      <PortfolioValueChart initialHistory={data?.portfolioApiHistory} snapshots={data?.snapshots} currentValue={data?.portfolioHistoryWarning ? undefined : portfolio.totalValue} loadedAt={data?.loadedAt} historyStartedAt={data?.portfolioHistoryStartedAt} transactions={data?.transactions} cashflowOverrides={cashflowOverrides} />
 
       <section className="table-card snapshot-card allocation-card">
         <div className="section-heading">
@@ -147,7 +165,7 @@ export default function PortfolioHome({ data, loading, error, refreshing, onRefr
         </div>
         <div className="allocation-layout">
           <div className="allocation-table-wrap">
-            <table className="clean-table compact allocation-table">
+            <AdaptiveTable className="clean-table compact allocation-table">
               <thead>
                 <tr>
                   <th>Kategorie</th>
@@ -160,7 +178,7 @@ export default function PortfolioHome({ data, loading, error, refreshing, onRefr
               </thead>
               <tbody>
                 {allocation.map(item => (
-                  <tr key={item.category}>
+                  <tr key={item.category} {...categoryNavigationProps(item.category)}>
                     <td>
                       <span className="allocation-label">
                         <span className="allocation-swatch" style={{ background: allocationColor(item.category) }} />
@@ -179,11 +197,11 @@ export default function PortfolioHome({ data, loading, error, refreshing, onRefr
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </AdaptiveTable>
           </div>
           <div className="allocation-mobile-list">
             {allocation.map(item => (
-              <article key={item.category} className="allocation-mobile-card">
+              <article key={item.category} className="allocation-mobile-card" {...categoryNavigationProps(item.category)}>
                 <header>
                   <span className="allocation-label">
                     <span className="allocation-swatch" style={{ background: allocationColor(item.category) }} />
@@ -200,7 +218,7 @@ export default function PortfolioHome({ data, loading, error, refreshing, onRefr
               </article>
             ))}
           </div>
-          <AllocationPie allocation={allocation} />
+          <AllocationPie allocation={allocation} categoryNavigationProps={categoryNavigationProps} />
         </div>
       </section>
 
@@ -224,15 +242,30 @@ export default function PortfolioHome({ data, loading, error, refreshing, onRefr
         </section>
       </div>
 
-      <section className="table-card portfolio-positions-card">
+      <section id="open-positions" ref={positionsRef} tabIndex={-1} aria-label="Offene Positionen" className="table-card portfolio-positions-card portfolio-positions-target">
         <div className="section-heading">
           <h3>Offene Positionen</h3>
           <span>{positions.length} Positionen</span>
         </div>
-        <p className="portfolio-position-description">Aktuelle Bestände aus Wallet und Trade-Historie. Unrealisiert ist der aktuelle Wert abzüglich der restlichen Kostenbasis; realisierte Ergebnisse stammen aus abgeschlossenen Verkäufen.</p>
-        <div className="position-card-grid">
-          {positions.map(position => <PositionCard key={position.assetKey} position={position} onSelectAsset={onSelectAsset} marketHistoryRefreshKey={marketHistoryRefreshKey} />)}
-        </div>
+        <p className="portfolio-position-description">Marktwert und unrealisierte Ergebnisse auf einen Blick. Kostenbasis und weitere Kennzahlen findest du in den Positionsdetails.</p>
+        {positions.length > 0 && <div className="position-category-filters" role="group" aria-label="Offene Positionen nach Anlageklasse filtern">
+          {[{ key: "all", label: "Alle", positions }, ...positionGroups].map(group => (
+            <button key={group.key} type="button" className="secondary-button position-category-filter" aria-pressed={activePositionCategory === group.key} onClick={() => setSelectedPositionCategory(group.key)}>
+              {group.label} <span>{group.positions.length}</span>
+            </button>
+          ))}
+        </div>}
+        {(activePositionCategory === "all" ? [{ key: "all", label: "Alle Positionen", positions: [...positions].sort((a, b) => Number(b.currentValue || 0) - Number(a.currentValue || 0)) }] : positionGroups.filter(group => activePositionCategory === group.key)).map(group => (
+          <section className="position-category-group" key={group.key} aria-label={group.label}>
+            {group.key !== "all" && <div className="position-category-heading">
+              <h4><span className="allocation-swatch" style={{ background: allocationColor(group.key) }} aria-hidden="true" />{group.label}</h4>
+              <span>{group.positions.length} {group.positions.length === 1 ? "Position" : "Positionen"} · {formatCurrency(group.totalValue)}</span>
+            </div>}
+            <div className="position-card-grid">
+              {group.positions.map(position => <PositionCard key={position.assetKey} position={position} onSelectAsset={onSelectAsset} marketHistoryRefreshKey={marketHistoryRefreshKey} />)}
+            </div>
+          </section>
+        ))}
         {!positions.length && <p className="assets-empty">Keine offenen Positionen vorhanden.</p>}
       </section>
 
@@ -253,11 +286,12 @@ export default function PortfolioHome({ data, loading, error, refreshing, onRefr
 function PositionCard({ position, onSelectAsset, marketHistoryRefreshKey, watchlist = false, onRemoveWatch }) {
   const [history, setHistory] = useState(null);
   const [historyMeta, setHistoryMeta] = useState(null);
+  const [dayHistory, setDayHistory] = useState(null);
   const [chartError, setChartError] = useState(false);
   useEffect(() => {
     let active = true;
     setHistory(null); setHistoryMeta(null); setChartError(false);
-    loadMarketHistorySnapshot({ symbol: assetSymbol(position), name: assetTitle(position), category: position.category }, "1d", marketHistoryRefreshKey).then(result => {
+    loadMarketHistorySnapshot({ symbol: assetSymbol(position), name: assetTitle(position), category: position.category, chartSource: "bitpanda" }, "1d", marketHistoryRefreshKey).then(result => {
       if (active) {
         setHistory(result.history);
         setHistoryMeta({ currency: result.currency || "EUR", unit: result.unit || null, extendedHours: result.extendedHours || false });
@@ -266,15 +300,27 @@ function PositionCard({ position, onSelectAsset, marketHistoryRefreshKey, watchl
     return () => { active = false; };
   }, [position.assetKey, position.name, position.displayName, position.category, marketHistoryRefreshKey]);
 
+  useEffect(() => {
+    let active = true;
+    setDayHistory(null);
+    if (!watchlist && position.positionType !== "leverage") {
+      loadMarketHistorySnapshot({ symbol: assetSymbol(position), name: assetTitle(position), category: position.category, chartSource: "bitpanda" }, "1w", marketHistoryRefreshKey)
+        .then(result => { if (active && usablePositionDayHistory(result, position.category)) setDayHistory(result); })
+        .catch(() => {});
+    }
+    return () => { active = false; };
+  }, [position.assetKey, position.name, position.displayName, position.category, position.positionType, watchlist, marketHistoryRefreshKey]);
+
   const points = history || [];
   const prices = points.map(point => Number(point.close)).filter(Number.isFinite);
   const first = prices[0];
   const last = prices.at(-1);
   const watchPrice = last == null ? null : `${formatCurrency(last)}${historyMeta?.unit ? `/${historyMeta.unit}` : ""}`;
-  const todayPercent = first && last ? (last / first - 1) * 100 : null;
-  const todayValueChange = watchlist || todayPercent == null || !Number.isFinite(Number(position.currentValue)) || 100 + todayPercent === 0
-    ? null
-    : Number(position.currentValue) * todayPercent / (100 + todayPercent);
+  const todayPercent = prices.length > 1 && first > 0 ? (last / first - 1) * 100 : null;
+  const assetPriceChange = todayPercent == null ? null : last - first;
+  const dayChange = calculatePositionDayChange(position, dayHistory?.history);
+  const positionDayPercent = dayChange?.percent ?? null;
+  const positionDayChange = dayChange?.amount ?? null;
   const positive = todayPercent == null ? Number(position.unrealizedProfit || 0) >= 0 : todayPercent >= 0;
   const marketDayLabel = marketDateLabel(points.at(-1)?.date);
   const min = prices.length ? Math.min(...prices) : 0;
@@ -282,23 +328,48 @@ function PositionCard({ position, onSelectAsset, marketHistoryRefreshKey, watchl
   const span = max - min || Math.max(Math.abs(max) * .01, 1);
   const line = prices.map((price, index) => `${prices.length === 1 ? 160 : index / (prices.length - 1) * 320},${92 - (price - min) / span * 80}`).join(" ");
 
+  const openChart = () => onSelectAsset(position, { target: "chart" });
+
   return <article className="position-card">
+    <div className="position-card-chart-link" role="button" tabIndex={0} aria-label={`Chart für ${assetTitle(position)} öffnen`} onClick={openChart} onKeyDown={event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openChart();
+      }
+    }}>
     <header>
       <div className="position-card-identity"><span className="position-asset-mark" aria-hidden="true">{assetSymbol(position).slice(0, 2)}</span><div><strong title={assetTitle(position)}>{assetTitle(position)}</strong><small>{assetSymbol(position)} · {categoryName(position.category)}</small></div></div>
-      <div className="position-card-value"><strong>{watchlist ? (chartError ? "–" : watchPrice || "Lädt …") : (position.currentValue == null ? "–" : formatCurrency(position.currentValue))}</strong><small>{watchlist ? "Aktueller Marktkurs" : position.currentPrice == null ? "Kurs –" : formatCurrency(position.currentPrice)}</small></div>
+      <div className="position-card-value"><strong>{watchlist ? (chartError ? "–" : watchPrice || "Lädt …") : (position.currentValue == null ? "–" : formatCurrency(position.currentValue))}</strong><small>{watchlist ? "Aktueller Marktkurs" : position.currentPrice == null ? "Kurs –" : `${formatCurrency(position.currentPrice)} · ${position.priceSource === "Bitpanda Portfolio API" ? "Bitpanda-Portfolio" : "Ticker-Ersatz"}`}</small></div>
     </header>
     <div className="position-card-chart">
       {prices.length > 1 ? <svg viewBox="0 0 320 100" preserveAspectRatio="none" role="img" aria-label={`Kursverlauf ${assetTitle(position)} · ${marketDayLabel}`}><line x1="0" x2="320" y1="50" y2="50" /><polyline points={line} className={positive ? "positive-line" : "negative-line"} /></svg> : <div className="position-chart-placeholder">{chartError ? "Tageschart nicht verfügbar" : "Tageschart wird geladen …"}</div>}
     </div>
-    <div className="position-card-today"><span>{marketDayLabel}{historyMeta?.extendedHours && <small>inkl. Vor-/Nachbörse</small>}</span><strong className={todayPercent == null ? "muted" : positive ? "positive" : "negative"}>{todayPercent == null ? "–" : <>{todayPercent >= 0 ? "+" : ""}{formatPercent(todayPercent)}{todayValueChange != null && <small> · {todayValueChange >= 0 ? "+" : ""}{formatCurrency(todayValueChange)}</small>}</>}</strong></div>
-    {watchlist ? <dl><div><dt>Anlageklasse</dt><dd>{categoryName(position.category)}</dd></div><div><dt>Status</dt><dd>Watchlist</dd></div></dl> : <dl><div><dt>Restmenge</dt><dd>{formatNumber(position.currentQuantity)}</dd></div>
-      <div><dt>Unrealisiert</dt><dd className={position.unrealizedProfit == null ? "muted" : Number(position.unrealizedProfit) >= 0 ? "positive" : "negative"}>{position.unrealizedProfit == null ? "–" : formatCurrency(position.unrealizedProfit)}<small>{formatPercent(position.unrealizedProfitPercent)}</small></dd></div>
-      <div><dt>Kostenbasis</dt><dd>{formatCurrency(position.costBasis)}</dd></div>
-      <div><dt>Ø Einstieg</dt><dd>{formatCurrency(position.averageRemainingCost)}</dd></div>
-      <div><dt>Realisierter Gewinn</dt><dd className={Number(position.realizedProfit || 0) >= 0 ? "positive" : "negative"}>{formatCurrency(position.realizedProfit)}</dd></div>
+    <div className="position-card-today"><span>Asset-Kursänderung<small>{marketDayLabel} · pro Einheit</small></span><strong className={todayPercent == null ? "muted" : positive ? "positive" : "negative"}>{todayPercent == null ? "–" : <>{todayPercent >= 0 ? "+" : ""}{formatPercent(todayPercent)}{assetPriceChange != null && <small>{assetPriceChange >= 0 ? "+" : ""}{formatCurrency(assetPriceChange)}{historyMeta?.unit ? `/${historyMeta.unit}` : ""}</small>}</>}</strong></div>
+    </div>
+    {!watchlist && <dl className="position-card-summary">
+      <div><dt>Unrealisiert</dt><dd className={position.unrealizedProfit == null ? "muted" : position.unrealizedProfit >= 0 ? "positive" : "negative"}>{formatCurrency(position.unrealizedProfit)}<small>{formatPercent(position.unrealizedProfitPercent)}</small></dd></div>
+      <div><dt>Restmenge</dt><dd>{formatNumber(position.currentQuantity)}</dd></div>
+    </dl>}
+    <details className="position-card-details"><summary>{watchlist ? "Asset-Informationen" : "Positionsdetails"}</summary>
+    {historyMeta?.extendedHours && <p className="data-note">Die Asset-Kursänderung berücksichtigt auch die Vor- und Nachbörse.</p>}
+    {watchlist ? <dl><div><dt>Anlageklasse</dt><dd>{categoryName(position.category)}</dd></div><div><dt>Status</dt><dd>Watchlist</dd></div></dl> : <dl>
+      <div><dt>Restmenge</dt><dd>{formatNumber(position.currentQuantity)}</dd></div>
       <div><dt>Positionsart</dt><dd>{position.positionType === "leverage" ? `Hebel · ${position.direction === "short" ? "Short" : "Long"}${position.leverage ? ` · ${formatNumber(position.leverage)}x` : ""}` : "Spot"}</dd></div>
+      <div><dt title={position.positionSource}>Kostenbasis{position.reportedInvestedAmount != null ? " · Bitpanda" : " · Historie"}</dt><dd>{position.costBasis == null ? "–" : formatCurrency(position.costBasis)}</dd></div>
+      <div><dt title="Verbleibende Kaufkosten einschließlich Kaufgebühren aus der Trade-Historie">Kaufkosten inkl. Gebühren</dt><dd>{position.historicalAcquisitionCost == null ? "–" : formatCurrency(position.historicalAcquisitionCost)}</dd></div>
+      <div><dt>Realisierter Gewinn</dt><dd className={Number(position.realizedProfit || 0) >= 0 ? "positive" : "negative"}>{formatCurrency(position.realizedProfit)}</dd></div>
+      <div><dt>Unrealisiert</dt><dd className={position.unrealizedProfit == null ? "muted" : Number(position.unrealizedProfit) >= 0 ? "positive" : "negative"}>{position.unrealizedProfit == null ? "–" : formatCurrency(position.unrealizedProfit)}<small>{formatPercent(position.unrealizedProfitPercent)}</small></dd></div>
+      <div><dt title={position.averageEntrySource}>Ø Einstieg</dt><dd>{position.averageRemainingCost == null ? "–" : formatCurrency(position.averageRemainingCost)}</dd><DataQuality kind={position.averageRemainingCost == null ? "unknown" : position.averageEntrySource === "Bitpanda Portfolio API" ? "reported" : "estimated"} /></div>
       <div><dt>Bitpanda-Kurs · 24 h</dt><dd className={position.priceChangeDay == null ? "muted" : Number(position.priceChangeDay) >= 0 ? "positive" : "negative"}>{formatPercent(position.priceChangeDay)}</dd></div></dl>}
-    <div className="position-card-actions"><button className="secondary-button" onClick={() => onSelectAsset(position)}>Details ansehen <span aria-hidden="true">↗</span></button>{watchlist && <button className="secondary-button" onClick={() => onRemoveWatch(position.assetKey)}>Entfernen</button>}</div>
+    {!watchlist && <div className="position-card-return">
+      <span>Deine Positionsänderung · 24 h<small>Jetzt gegenüber vor 24 h · aktueller Bestand</small>{dayHistory && dayHistory.source !== "Bitpanda · Original-Kursdaten" && <small>Vergleichskurs: {dayHistory.resolvedSymbol || assetSymbol(position)} · {dayHistory.source} (EUR)</small>}</span>
+      <strong className={positionDayChange == null ? "muted" : positionDayChange >= 0 ? "positive" : "negative"}>
+        {positionDayChange == null ? "–" : `${positionDayChange >= 0 ? "+" : ""}${formatCurrency(positionDayChange)}`}
+        <small>{positionDayPercent == null ? "–" : `${positionDayPercent >= 0 ? "+" : ""}${formatPercent(positionDayPercent)}`}</small>
+      </strong>
+    </div>}
+    </details>
+    {watchlist && <div className="position-card-actions"><button className="secondary-button" onClick={() => onRemoveWatch(position.assetKey)}>Entfernen</button></div>}
   </article>;
 }
 
@@ -306,12 +377,12 @@ function categoryName(value) {
   return ({ stock: "Aktie", etf: "ETF", crypto: "Krypto", metal: "Edelmetall" })[value] || "Sonstiges";
 }
 
-
-function Metric({ title, value, secondary, tone, featured = false }) {
+function Metric({ title, value, secondary, tone, featured = false, quality = "calculated" }) {
   return (
     <div className={`metric-card${featured ? " metric-card-featured" : ""}`}>
       <span>{title}</span>
       <strong className={tone || ""}>{value}{secondary && <small className="metric-secondary">{secondary}</small>}</strong>
+      <DataQuality kind={quality} />
     </div>
   );
 }
@@ -330,7 +401,7 @@ function AssetMini({ asset, onSelectAsset }) {
   );
 }
 
-function AllocationPie({ allocation }) {
+function AllocationPie({ allocation, categoryNavigationProps }) {
   const total = allocation.reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
   let cursor = 0;
   const gradient = total > 0
@@ -352,7 +423,7 @@ function AllocationPie({ allocation }) {
       </div>
       <div className="allocation-legend">
         {allocation.map(item => (
-          <div key={item.category}>
+          <div key={item.category} {...categoryNavigationProps(item.category)}>
             <span className="allocation-swatch" style={{ background: allocationColor(item.category) }} />
             <span>{item.categoryLabel}</span>
             <strong>{formatPercent(item.percent)}</strong>
@@ -363,7 +434,7 @@ function AllocationPie({ allocation }) {
   );
 }
 
-function buildAllocation(positions, liquidBalance = {}, profitAssets = [], feeAdjustments = []) {
+function buildAllocation(positions, liquidBalance = {}, profitAssets = []) {
   const map = new Map();
   const realizedByCategory = new Map();
 
@@ -375,7 +446,7 @@ function buildAllocation(positions, liquidBalance = {}, profitAssets = [], feeAd
       realizedProfit: 0
     };
 
-    current.realizedProfit += Number(asset.realizedProfit || 0) - feeAdjustmentTotal(feeAdjustments, asset.assetKey);
+    current.realizedProfit += Number(asset.realizedProfit || 0);
     realizedByCategory.set(category, current);
   }
 

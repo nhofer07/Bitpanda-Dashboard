@@ -1,12 +1,13 @@
+import { formatCurrency } from "./formatters.js";
+import PageIntro from "./PageIntro.jsx";
+import LoadingState from "./LoadingState.jsx";
 import PageDescription from "./PageDescription.jsx";
 import { useEffect, useState } from "react";
 import { amount, cashflowClass, defaultCashflowClass } from "./helpers.js";
 
-function formatCurrency(value) {
-  return `${Number(value || 0).toLocaleString("de-DE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })} €`;
+function periodLabel(value) {
+  if (!/^\d{4}-\d{2}$/.test(value || "")) return value || "–";
+  return new Intl.DateTimeFormat('de-AT', { month: 'long', year: 'numeric' }).format(new Date(`${value}-01T12:00:00`));
 }
 
 function formatDate(value) {
@@ -209,7 +210,7 @@ export default function PeriodOverview({ cashflowOverrides = {} }) {
     }
   }
 
-  if (loading) return <div className="loading-state">Lade Übersicht...</div>;
+  if (loading) return <LoadingState>Lade Übersicht …</LoadingState>;
 
   if (error) {
     return <div className="error-box">{error}</div>;
@@ -231,21 +232,20 @@ export default function PeriodOverview({ cashflowOverrides = {} }) {
   });
 
   return (
-    <div>
-      <section className="hero-card">
+    <div className="period-overview">
+      <PageIntro>
         <div>
-          <div className="eyebrow">Zeitraum-Analyse</div>
-          <h2>Monats- und Jahresübersicht</h2>
+
           <PageDescription summary="Einzahlungen, Ausgaben und Anlageergebnisse im Monats- und Jahresvergleich.">
             Netto ist Einzahlungen minus Auszahlungen (inklusive Ausgaben) minus Transfers auf andere Konten. Rückerstattungen werden separat ausgewiesen und sind nicht im Netto enthalten.
-            „Investiert Ergebnis“ ist Netto G/V aus Verkäufen plus gebuchte Dividenden. Gewinn- und Steuerwerte werden in allen Ansichten einheitlich berechnet. Dividenden werden berücksichtigt, wenn sie in den Bitpanda-Buchungsdaten entsprechend ausgewiesen sind.
+            „Anlageergebnis“ ist Netto G/V aus Verkäufen plus gebuchte Dividenden. Gewinn- und Steuerwerte werden in allen Ansichten einheitlich berechnet. Dividenden werden berücksichtigt, wenn sie in den Bitpanda-Buchungsdaten entsprechend ausgewiesen sind.
           </PageDescription>
         </div>
         <div className="hero-status">
           <span>{mode === "monthly" ? "Monate" : "Jahre"}</span>
           <strong>{rows.length}</strong>
         </div>
-      </section>
+      </PageIntro>
 
       {!summary?.paidTax?.available && <div className="info-box">Steuerbuchungen sind nicht verfügbar. Die Ergebnisse enthalten solange keinen KESt-Abzug.</div>}
 
@@ -294,7 +294,7 @@ export default function PeriodOverview({ cashflowOverrides = {} }) {
 
         <section className="period-detail-card">
           <div className="section-heading">
-            <h3>{selected?.period || "Kein Zeitraum"}</h3>
+            <h3>{selected ? periodLabel(selected.period) : "Kein Zeitraum"}</h3>
             <span>Details</span>
           </div>
 
@@ -305,9 +305,9 @@ export default function PeriodOverview({ cashflowOverrides = {} }) {
                 <Metric title="Echte Ausgaben" value={formatCurrency(selected.expenses)} tone="negative" />
                 <Metric title="Transfers" value={formatCurrency(selected.transfers)} />
                 <Metric title="Rückerstattungen" value={formatCurrency(selected.refunds)} tone="positive" />
-                <Metric title="Netto" value={formatCurrency(selected.net)} tone={Number(selected.net || 0) >= 0 ? "positive" : "negative"} />
+                <Metric title="Netto-Einzahlungen" value={formatCurrency(selected.net)} tone={Number(selected.net || 0) >= 0 ? "positive" : "negative"} />
                 <Metric title="Netto G/V nach KESt" value={formatCurrency(selected.realizedProfit)} tone={Number(selected.realizedProfit || 0) >= 0 ? "positive" : "negative"} />
-                <Metric title="Investiert Ergebnis" value={formatCurrency(investmentResult(selected))} tone={investmentResult(selected) >= 0 ? "positive" : "negative"} />
+                <Metric title="Anlageergebnis" value={formatCurrency(investmentResult(selected))} tone={investmentResult(selected) >= 0 ? "positive" : "negative"} />
                 <Metric title="Dividenden netto" value={formatCurrency(selected.dividends)} tone={Number(selected.dividends || 0) >= 0 ? "positive" : "negative"} />
                 <Metric title="Verkäufe" value={selected.sellCount} />
               </div>
@@ -407,21 +407,21 @@ export default function PeriodOverview({ cashflowOverrides = {} }) {
 
 function PeriodButton({ row, active, onClick }) {
   const result = periodResult(row);
-  const invested = investmentResult(row);
+  const investment = investmentResult(row);
 
   return (
     <button className={active ? "active" : ""} onClick={onClick}>
       <span>
-        <strong>{row.period}</strong>
+        <strong>{periodLabel(row.period)}</strong>
         <small>
           {row.transactionCount} {plural(row.transactionCount, "Buchung", "Buchungen")} · {row.sellCount} {plural(row.sellCount, "Verkauf", "Verkäufe")}
         </small>
       </span>
       <span className="period-result">
-        <small>Gesamt</small>
+        <small>Inkl. Cashflow</small>
         <strong className={result >= 0 ? "positive" : "negative"}>{formatCurrency(result)}</strong>
-        <small>Investiert</small>
-        <strong className={invested >= 0 ? "positive" : "negative"}>{formatCurrency(invested)}</strong>
+        <small>Anlageergebnis</small>
+        <strong className={investment >= 0 ? "positive" : "negative"}>{formatCurrency(investment)}</strong>
       </span>
     </button>
   );

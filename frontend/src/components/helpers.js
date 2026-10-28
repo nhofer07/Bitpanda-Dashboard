@@ -1,14 +1,11 @@
-export function getType(transaction) {
-  return (transaction.attributes?.type || "").toLowerCase();
-}
+import { getType, getDirection, amount, isDeposit, isWithdrawalOrCard, defaultCashflowClass, cashflowClass } from "../../../backend/cashflow-classification.js";
+export { getType, getDirection, amount, isDeposit, isWithdrawalOrCard, defaultCashflowClass, cashflowClass };
+import { formatCurrency as currency, formatPercent as percentage, formatDateTime } from "./formatters.js";
 
-export function getDirection(transaction) {
-  return (transaction.attributes?.in_or_out || "").toLowerCase();
-}
 
-export function amount(transaction) {
-  return Math.abs(Number(transaction.attributes?.amount || 0));
-}
+
+
+
 
 export function fee(transaction) {
   return Math.abs(Number(transaction.attributes?.fee || 0));
@@ -28,20 +25,9 @@ export function isSavingsTransaction(transaction) {
   return transaction.attributes?.is_savings === true;
 }
 
-export function formatCurrency(value) {
-  return `${Number(value || 0).toLocaleString("de-DE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })} €`;
-}
+export function formatCurrency(value) { return currency(value); }
 
-export function formatPercent(value) {
-  if (value === null || value === undefined) return "-";
-  return `${Number(value || 0).toLocaleString("de-DE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}%`;
-}
+export function formatPercent(value) { return percentage(value); }
 
 export function formatDate(transaction) {
   const date =
@@ -49,25 +35,12 @@ export function formatDate(transaction) {
     transaction.attributes?.created_at ||
     transaction.created_at;
 
-  return date ? new Date(date).toLocaleString("de-DE") : "-";
+  return formatDateTime(date);
 }
 
-export function isDeposit(transaction) {
-  const type = getType(transaction);
-  const direction = getDirection(transaction);
 
-  return type === "deposit" && direction === "incoming";
-}
 
-export function isWithdrawalOrCard(transaction) {
-  const type = getType(transaction);
-  const direction = getDirection(transaction);
 
-  return (
-    (type === "withdrawal" && direction === "outgoing") ||
-    (type === "transfer" && direction === "outgoing")
-  );
-}
 
 export function isCardPayment(transaction) {
   const attributes = transaction.attributes || {};
@@ -75,20 +48,9 @@ export function isCardPayment(transaction) {
   return attributes.is_card === true || attributes.is_card_order_charge === true || text.includes("bitpanda card") || text.includes("bp card");
 }
 
-export function defaultCashflowClass(transaction) {
-  if (isDeposit(transaction)) return "deposit";
-  if (isWithdrawalOrCard(transaction)) {
-    return "expense";
-  }
-  return "ignore";
-}
 
-export function cashflowClass(transaction, overrides = {}) {
-  const override = overrides?.[transaction.id];
-  const fallback = defaultCashflowClass(transaction);
 
-  return override || fallback;
-}
+
 
 export function isRefund(transaction, overrides = {}) {
   return cashflowClass(transaction, overrides) === "refund";

@@ -58,3 +58,31 @@ test("cashflows alone keep the curve flat and single points have a usable scale"
   assert.equal(single.minimumPoint.value, 4000);
   assert.ok(single.scaleMin < 4000 && single.scaleMax > 4000);
 });
+
+
+test("uniform values move historical highs to today's capital after deposits and withdrawals", () => {
+  const points = [{ time: 1, value: 3500 }, { time: 2, value: 3600 }, { time: 3, value: 3950 }];
+  const deposited = cashflowAdjustedPoints(points, [{ time: 3, signedAmount: 400 }]);
+  assert.equal(portfolioValueScale(deposited).maximumPoint.adjustedValue, 4000);
+  assert.equal(deposited.at(-1).adjustedValue, 3950);
+  assert.equal(points[1].value, 3600);
+  const withdrawn = cashflowAdjustedPoints(points, [{ time: 3, signedAmount: -400 }]);
+  assert.equal(withdrawn[1].adjustedValue, 3200);
+  assert.equal(withdrawn.at(-1).adjustedValue, 3950);
+  assert.equal(cashflowAdjustedPoints(points.slice(1), [{ time: 3, signedAmount: 400 }])[0].adjustedValue, 4000);
+});
+
+test('cashflow periods do not report profit divided by an obsolete initial balance as return', async () => {
+  const { portfolioPeriodResult } = await import('../src/components/chartCashflows.js');
+  const result = portfolioPeriodResult([{ time: 1, value: 100 }, { time: 3, value: 1100 }], [{ time: 2, signedAmount: 900 }]);
+  assert.equal(result.profit, 100);
+  assert.equal(result.percent, null);
+  assert.equal(result.hasCashflows, true);
+  assert.equal(portfolioPeriodResult([{ time: 1, value: 1000 }, { time: 3, value: 1100 }], []).percent, 10);
+});
+test('actual mode uses actual values for both geometry and extrema', async () => {
+  const { portfolioDisplayPoints } = await import('../src/components/chartCashflows.js');
+  const adjusted = cashflowAdjustedPoints([{ time: 1, value: 4000 }, { time: 2, value: 5100 }, { time: 3, value: 4150 }], [{ time: 2, signedAmount: 1000 }, { time: 3, signedAmount: -1000 }]);
+  assert.equal(portfolioValueScale(portfolioDisplayPoints(adjusted, false)).maximumPoint.time, 2);
+  assert.equal(portfolioValueScale(portfolioDisplayPoints(adjusted, true)).maximumPoint.time, 3);
+});

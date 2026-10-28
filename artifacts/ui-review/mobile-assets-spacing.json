@@ -1,0 +1,37 @@
+[
+  {
+    "container": "app-content",
+    "before": "page-heading",
+    "after": "assets-view",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "assets-view",
+    "before": "page-intro ",
+    "after": "view-panel",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "assets-view",
+    "before": "view-panel",
+    "after": "source-note",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "assets-view",
+    "before": "source-note",
+    "after": "table-card",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "assets-view",
+    "before": "table-card",
+    "after": "asset-market-panel",
+    "gap": 20,
+    "expected": 20
+  }
+]

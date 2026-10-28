@@ -28,6 +28,19 @@ def summarize(data, overrides=None, now=None):
     value = data.get('portfolio', {}).get('totalValue')
     if loaded is None or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise ValueError('Kein gültiger Portfoliowert')
+    chart = data.get('chart')
+    if isinstance(chart, dict) and chart.get('version') == 1:
+        points = chart.get('points')
+        if not isinstance(points, list) or any(not isinstance(p, dict) or any(not isinstance(p.get(k), (int, float)) or not math.isfinite(p[k]) for k in ('time', 'value')) or p['time'] > now.timestamp() for p in points):
+            raise ValueError('Ungültiger geprüfter Chart')
+        current_day = dt.datetime.fromtimestamp(loaded, ZONE).date() == now.date()
+        adjusted = [[p['time'], p['value']] for p in sorted(points, key=lambda p: p['time'])] if current_day else []
+        return dict(value=value, loadedAt=data['loadedAt'], points=adjusted,
+                    change=chart.get('change') if len(adjusted) > 1 else None,
+                    percent=chart.get('percent') if len(adjusted) > 1 else None,
+                    completeDay=chart.get('completeDay', False), periodLabel=chart.get('periodLabel'),
+                    chartLastPointAt=chart.get('lastPointAt'), correctionCount=len(chart.get('corrections', [])),
+                    preview=data.get('cache', {}).get('status') == 'local-preview')
     points = {}
     recording_start = stamp(data.get('portfolioHistoryStartedAt')) or 0
     for item in data.get('snapshots', []):

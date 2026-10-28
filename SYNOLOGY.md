@@ -111,25 +111,40 @@ eine VPN-Verbindung verwenden; den Port nicht direkt ins Internet weiterleiten.
 
 Der Container startet nach einem NAS-Neustart automatisch. Sobald das Dashboard
 einmal im hinterlegten Browser geöffnet wurde, werden dessen Keys wieder in den
-Arbeitsspeicher übertragen. Danach läuft die minütliche Portfolioaufzeichnung auch
-ohne geöffneten Browser weiter.
+Arbeitsspeicher übertragen. Danach werden die Kontodaten auch ohne geöffneten Browser weiter aktualisiert.
+Bei verfügbarer Bitpanda-Portfoliohistorie wird lokal nur ein Tagespunkt
+fortgeschrieben; Minuten-Snapshots dienen als Rückfall bei API-Ausfällen.
 
 ## Updates mit automatischer Datensicherung
 
 Auf dem Mac kann `Synology aktualisieren.command` per Doppelklick gestartet werden.
 Das Synology-Passwort wird einmal beim Öffnen abgefragt und nur im Arbeitsspeicher
-dieses laufenden Terminal-Prozesses gehalten. Nach einem Update kann mit `R` sofort
-ein weiteres vollständiges Update inklusive Datensicherung gestartet werden, ohne
-das Passwort erneut einzugeben. Mit Enter wird das Terminalfenster geschlossen.
+dieses laufenden Terminal-Prozesses gehalten. Beim Öffnen wird nur Nicos Instanz aktualisiert. Danach startet `R` erneut ein
+Update für Nico; `J` aktualisiert ausschließlich Josis Instanz. Pro Durchlauf
+werden nur Datenordner, Backup, Container-Neubau und Gesundheitscheck der gewählten
+Person ausgeführt. Das Passwort muss dafür nicht erneut eingegeben werden. Mit Enter wird das Terminalfenster geschlossen.
 Beim nächsten Öffnen der `.command`-Datei wird das Passwort wieder neu abgefragt.
-Vor jedem Container-Neubau prüft das Script, ob Nico und Josi weiterhin die
-erwarteten Datenordner `data-nico` und `data-josi` verwenden. Bei einer Abweichung
+Vor jedem Container-Neubau prüft das Script, ob die gewählte Instanz weiterhin
+ihren erwarteten Datenordner `data-nico` beziehungsweise `data-josi` verwendet. Bei einer Abweichung
 bricht es ab. Anschließend legt es außerhalb des Projektordners Sicherungen an:
 
 ```text
 /volume1/docker/Bitpanda-Dashboard-backups/ZEITSTEMPEL-data-nico.tar.gz
 /volume1/docker/Bitpanda-Dashboard-backups/ZEITSTEMPEL-data-josi.tar.gz
 ```
+
+Der Updater baut das Frontend und führt die Backend- und Frontend-Tests auf dem
+Mac aus. Benötigt werden Node.js und npm. Die fertigen Browser-Dateien werden im
+Release mitgeliefert; auf dem NAS entfällt dadurch der Frontend-Build samt dessen
+npm-Installation. Die Node-Abhängigkeiten des Backends werden weiterhin auf der
+Synology installiert, damit native Module zur NAS-Architektur passen.
+`Dockerfile.synology` und `docker-compose.synology.yml` verwenden für beide
+Instanzen das gemeinsame Image `bitpanda-dashboard:synology`. Eine Aktualisierung
+dieses Images startet die andere laufende Instanz nicht neu. Persistente Daten,
+Backups und Widget-Dateien sind aus dem Docker-Build-Kontext ausgeschlossen.
+Der erste Build mit dem neuen Dockerfile kann noch Abhängigkeiten installieren;
+weitere Builds verwenden den Cache, solange die Paketdateien gleich bleiben.
+Die normalen manuellen Docker-Builds über `Dockerfile` funktionieren weiterhin.
 
 Diese Archive enthalten Anmeldung, Cache und Portfolioverlauf, aber keine API-Keys.
 Die API-Keys bleiben ausschließlich in den jeweiligen Browsern und im Arbeitsspeicher
@@ -196,6 +211,22 @@ Synology ausgehend auf weitere Geräte im Tailnet zugreifen sollten.
 
 ## 9. Tailscale auf Mac, iPhone oder iPad installieren
 
+### Updates außerhalb des Heimnetzwerks
+
+Wenn Mac und Synology über Tailscale verbunden sind, kann auch das Update-Script
+die Tailscale-IP oder den MagicDNS-Namen verwenden. Im Terminal im Projektordner:
+
+```bash
+SYNOLOGY_HOST=100.x.y.z bash "Synology aktualisieren.command"
+```
+
+`100.x.y.z` durch die tatsächliche Tailscale-IP der Synology ersetzen. Ohne diese
+Variable verwendet das Script weiterhin `192.168.0.147`. SSH muss auf der Synology
+aktiv und über die Verbindung erreichbar sein. Dafür wird der normale DSM-SSH-Dienst
+verwendet. Die Anzeige des Dashboards erfolgt unter `http://100.x.y.z:8085`.
+Die lokalen Verlaufsdateien und die Daten auf der Synology sind getrennte Bestände;
+das Programm-Update synchronisiert diese Historien nicht.
+
 1. Tailscale auf jedem Gerät installieren, von dem das Dashboard erreichbar sein
    soll.
 2. Weitere Personen in der Tailscale-Adminoberfläche als Benutzer in das Tailnet
@@ -260,7 +291,9 @@ Docker und Tailscale starten mit der Synology. Der Dashboard-Container läuft du
 der Synology gespeichert. Nach einem NAS- oder Container-Neustart öffnet jede Person
 ihre Dashboard-Adresse einmal in dem Browser, in dem der Key hinterlegt wurde. Der
 Browser aktiviert ihn automatisch; eine erneute manuelle Eingabe ist nicht nötig.
-Anschließend läuft die minütliche Aufzeichnung wieder ohne geöffneten Browser weiter.
+Anschließend läuft die Aktualisierung ohne geöffneten Browser weiter. Bei verfügbarer
+Bitpanda-Portfoliohistorie wird ein Tagespunkt fortgeschrieben, andernfalls läuft die
+Minutenaufzeichnung als Rückfall.
 
 ## 13. Tailscale testen
 

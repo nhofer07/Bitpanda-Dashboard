@@ -1,0 +1,37 @@
+[
+  {
+    "container": "app-content",
+    "before": "page-heading",
+    "after": "account-data-view",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "account-data-view",
+    "before": "page-intro ",
+    "after": "segmented-control account-tabs",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "account-data-view",
+    "before": "segmented-control account-tabs",
+    "after": "table-card tax-detail-controls",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "account-data-view",
+    "before": "table-card tax-detail-controls",
+    "after": "table-card",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "account-data-view",
+    "before": "table-card",
+    "after": "table-card",
+    "gap": 20,
+    "expected": 20
+  }
+]

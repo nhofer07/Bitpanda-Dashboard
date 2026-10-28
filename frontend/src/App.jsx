@@ -1,7 +1,13 @@
+import PageIntro from "./components/PageIntro.jsx";
+import { viewTitle, navigationGroup, VIEW_IDS } from "./components/navigationItems.js";
+import DataFreshness from "./components/DataFreshness.jsx";
+import { createLatestRequest } from "./components/dashboardRefresh.js";
+import { createCashflowSync } from "./components/cashflowSync.js";
+import LoadingState from "./components/LoadingState.jsx";
 import PageDescription from "./components/PageDescription.jsx";
 import ActionFeedback from "./components/ActionFeedback.jsx";
 import { notify } from "./components/actionFeedback.js";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import SettingsView from "./components/SettingsView.jsx";
 import AssetsView from "./components/AssetsView.jsx";
 import Navigation from "./components/Navigation.jsx";
@@ -13,23 +19,23 @@ import TargetCalculator from "./components/TargetCalculator.jsx";
 import SummaryCards from "./components/SummaryCards.jsx";
 import SplitColumns from "./components/SplitColumns.jsx";
 import TransactionsTable from "./components/TransactionsTable.jsx";
-import AdjustmentsView from "./components/AdjustmentsView.jsx";
 import AccountDataView from "./components/AccountDataView.jsx";
 import FeesView from "./components/FeesView.jsx";
 import TaxCockpitView from "./components/TaxCockpitView.jsx";
 import MarketAnalysisView from "./components/MarketAnalysisView.jsx";
 import FusionView from "./components/FusionView.jsx";
 import InfoModal from "./components/InfoModal.jsx";
-import { readCashflowOverrides, writeCashflowOverrides } from "./components/cashflowOverrides.js";
+import { readCashflowOverrides } from "./components/cashflowOverrides.js";
 import { readBrowserCredentials } from "./components/browserCredentials.js";
 
 const APP_VIEW_STORAGE_KEY = "bitpanda-dashboard-active-view";
 const APP_ASSET_STORAGE_KEY = "bitpanda-dashboard-selected-asset";
-const RESTORABLE_VIEWS = new Set(["home", "profits", "calculator", "overview", "fiat", "calendar", "adjustments", "tax", "fees", "account", "market", "fusion", "asset", "settings", "assets"]);
+const RESTORABLE_VIEWS = new Set([...VIEW_IDS, "asset"]);
 
 function readStoredView() {
   try {
-    const stored = localStorage.getItem(APP_VIEW_STORAGE_KEY);
+    const hash = window.location.hash.slice(1);
+    const stored = RESTORABLE_VIEWS.has(hash) ? hash : localStorage.getItem(APP_VIEW_STORAGE_KEY);
     return stored === "asset" ? "assets" : RESTORABLE_VIEWS.has(stored) ? stored : "home";
   } catch {
     return "home";
@@ -50,6 +56,7 @@ export default function App() {
   const [dashboardData, setDashboardData] = useState(null);
   const [selectedAssetKey, setSelectedAssetKey] = useState(readStoredAssetKey);
   const [selectedAssetData, setSelectedAssetData] = useState(null);
+  const [assetNavigation, setAssetNavigation] = useState(null);
   const [infoOpen, setInfoOpen] = useState(false);
   const closeInfo = useCallback(() => setInfoOpen(false), []);
   const [search, setSearch] = useState("");
@@ -60,6 +67,22 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [dashboardError, setDashboardError] = useState("");
+  const [refreshError, setRefreshError] = useState("");
+  const latestRequest = useRef(createLatestRequest());
+  const hasDashboard = useRef(false);
+  const configured = useRef(false);
+  const transactionVersion = useRef(0);
+  const cashflowSync = useRef(null);
+  if (!cashflowSync.current) cashflowSync.current = createCashflowSync({
+    storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) },
+    onChange: setCashflowOverrides,
+    request: async (method, body) => {
+      const response = await fetch("/api/cashflow-overrides", { method, ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}) });
+      const result = await response.json();
+      if (!response.ok) throw Object.assign(new Error(result.error || "Cashflow-Zuordnungen konnten nicht synchronisiert werden."), { status: response.status, state: result.state });
+      return result;
+    }
+  });
 
   useEffect(() => {
     async function initialize() {
@@ -84,10 +107,12 @@ export default function App() {
         if (!status.bitpandaConfigured) {
           setActiveView("settings"); setLoading(false); setDashboardLoading(false);
         } else {
+          configured.current = true;
           loadSavedCashflowOverrides();
           loadTransactions(); loadDashboardData();
         }
-      } catch {
+      } catch (err) {
+        setRefreshError(err.message);
         setActiveView("settings"); setLoading(false); setDashboardLoading(false);
       }
     }
@@ -100,13 +125,16 @@ export default function App() {
       const delay = 60_000 - Date.now() % 60_000;
       refreshTimeout = window.setTimeout(() => {
         scheduleMinuteRefresh();
-        loadDashboardData({ silent: true, force: true });
+        if (configured.current) loadDashboardData({ silent: true, force: true });
       }, delay);
     };
     scheduleMinuteRefresh();
 
     const loadLatestWhenVisible = () => {
-      if (document.visibilityState === "visible") loadDashboardData({ silent: true });
+      if (configured.current && document.visibilityState === "visible") {
+        loadDashboardData({ silent: true, force: true });
+        loadSavedCashflowOverrides();
+      }
     };
     document.addEventListener("visibilitychange", loadLatestWhenVisible);
     window.addEventListener("focus", loadLatestWhenVisible);
@@ -121,6 +149,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const onBack = () => { const id = window.location.hash.slice(1); setAssetNavigation(null); setActiveView(RESTORABLE_VIEWS.has(id) ? (id === "asset" ? "assets" : id) : "home"); };
+    window.addEventListener("popstate", onBack);
+    window.addEventListener("hashchange", onBack);
+    return () => { window.removeEventListener("popstate", onBack); window.removeEventListener("hashchange", onBack); };
+  }, []);
+
+  useEffect(() => {
+    if (window.location.hash !== `#${activeView}`) window.history.replaceState({}, "", `#${activeView}`);
     window.scrollTo({ top: 0, behavior: "instant" });
     try {
       localStorage.setItem(APP_VIEW_STORAGE_KEY, activeView);
@@ -142,6 +178,7 @@ export default function App() {
   }, [selectedAssetKey]);
 
   async function loadTransactions() {
+    const version = ++transactionVersion.current;
     try {
       setLoading(true);
       setError("");
@@ -153,15 +190,16 @@ export default function App() {
         throw new Error(data.error || "Fehler beim Laden");
       }
 
-      setTransactions(data);
+      if (version === transactionVersion.current) setTransactions(data);
     } catch (err) {
-      setError(err.message);
+      if (version === transactionVersion.current) setError(err.message);
     } finally {
-      setLoading(false);
+      if (version === transactionVersion.current) setLoading(false);
     }
   }
 
   async function loadDashboardData({ refresh = false, silent = false, force = false, feedback = true } = {}) {
+    const token = latestRequest.current.begin();
     try {
       if (refresh) {
         setRefreshing(true);
@@ -176,67 +214,62 @@ export default function App() {
         throw new Error(data.error || "Fehler beim Laden");
       }
 
+      if (!latestRequest.current.accept(token, data)) return false;
+      hasDashboard.current = true;
       setDashboardError("");
+      setRefreshError("");
       setDashboardData(data);
       if (refresh && feedback) notify(data.paidTax?.available ? "Dashboard aktualisiert. Bestände, Gebühren und Steuerbuchungen sind geladen." : "Dashboard aktualisiert. Steuerbuchungen sind noch nicht verfügbar.", data.paidTax?.available ? "success" : "warning");
       if (Array.isArray(data.transactions)) {
+        transactionVersion.current++;
+        setLoading(false);
+        setError("");
         setTransactions(data.transactions);
       }
       return true;
     } catch (err) {
-      if (!silent) setDashboardError(err.message);
+      if (!latestRequest.current.current(token)) return false;
+      setRefreshError(err.message);
+      if (!hasDashboard.current) setDashboardError(err.message);
       if (refresh && feedback) notify(`Aktualisieren fehlgeschlagen: ${err.message}`, "error");
       return false;
     } finally {
-      if (!silent) setDashboardLoading(false);
-      if (refresh) setRefreshing(false);
+      if (latestRequest.current.current(token)) {
+        setDashboardLoading(false);
+        setRefreshing(false);
+      }
     }
   }
 
-  function openAsset(assetOrKey) {
+  function openAsset(assetOrKey, options = {}) {
     const item = typeof assetOrKey === "object" ? assetOrKey : null;
     setSelectedAssetData(item);
     setSelectedAssetKey(item ? item.assetKey || item.symbol : assetOrKey);
-    setActiveView("assets");
+    navigate("assets");
+    setAssetNavigation({ target: options.target || "details" });
   }
 
   function navigate(viewId) {
-    setActiveView(viewId === "open" ? "home" : viewId === "asset" ? "assets" : viewId);
+    setAssetNavigation(null);
+    window.scrollTo({ top: 0, behavior: "instant" });
+    const next = viewId === "open" ? "home" : viewId === "asset" ? "assets" : viewId;
+    if (next !== activeView) window.history.pushState({}, "", `#${next}`);
+    setActiveView(next);
   }
 
   async function updateCashflowOverride(transactionId, classification) {
-    const next = { ...cashflowOverrides, [transactionId]: classification };
-    setCashflowOverrides(next);
-    const localSaved = writeCashflowOverrides(next);
     const feedbackId = notify("Cashflow-Zuordnung wird gespeichert …", "pending", "cashflow-save");
     try {
-      const response = await fetch("/api/cashflow-overrides", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ overrides: next }) });
-      if (!response.ok) throw new Error("Server hat die Änderung nicht gespeichert.");
+      await cashflowSync.current.update(transactionId, classification);
       notify("Cashflow-Zuordnung gespeichert.", "success", feedbackId);
-    } catch {
-      notify(localSaved ? "Cashflow-Zuordnung nur in diesem Browser gespeichert. Synchronisierung mit der Synology fehlgeschlagen." : "Cashflow-Zuordnung geändert, konnte aber nicht gespeichert werden. Bitte erneut versuchen.", localSaved ? "warning" : "error", feedbackId);
+    } catch (err) {
+      notify(err.status === 409 ? err.message : err.localSaved ? "Nur in diesem Browser gespeichert. Die Synchronisierung wird beim nächsten Öffnen erneut versucht." : "Speichern fehlgeschlagen. Bitte erneut versuchen.", "warning", feedbackId);
     }
   }
 
   async function loadSavedCashflowOverrides() {
-    const local = readCashflowOverrides();
-    try {
-      const response = await fetch("/api/cashflow-overrides");
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Cashflow-Korrekturen konnten nicht geladen werden.");
-      const merged = { ...(data.overrides || {}), ...local };
-      setCashflowOverrides(merged);
-      writeCashflowOverrides(merged);
-      if (Object.keys(local).length) {
-        await fetch("/api/cashflow-overrides", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ overrides: merged })
-        });
-      }
-    } catch {
-      setCashflowOverrides(local);
-    }
+    try { await cashflowSync.current.load(); }
+    catch (err) { notify(err.message || "Cashflow-Zuordnungen konnten nicht synchronisiert werden.", "warning", "cashflow-sync"); }
   }
 
   const visibleTransactions = transactions.filter((transaction) => {
@@ -248,7 +281,8 @@ export default function App() {
     <div className="app-shell dashboard-shell">
       <header className="app-header">
         <div>
-          <h1>Bitpanda Dashboard</h1>
+          <span className="app-brand"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 17 6-7 4 4 6-9M14 5h6v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg><span>Bitpanda <b>Dashboard</b></span></span>
+          <h1 className="mobile-page-title">{viewTitle(activeView)}</h1>
         </div>
         <div className="header-controls">
           <button
@@ -278,6 +312,9 @@ export default function App() {
       <Navigation activeView={activeView} setActiveView={navigate} />
 
       <main className="app-content" id="main-content">
+      <div className="page-heading"><div className="desktop-page-title"><span className="eyebrow">{activeView === "home" ? "Dein Überblick" : navigationGroup(activeView)?.label || "Verbindungen & Zugang"}</span><h1>{viewTitle(activeView)}</h1></div>
+      <DataFreshness loadedAt={dashboardData?.loadedAt} error={refreshError} preview={dashboardData?.cache?.status === "local-preview"} refreshing={refreshing} onRefresh={() => loadDashboardData({ refresh: true })} />
+      </div>
       {dashboardData?.cache?.status === "local-preview" && <div className="warning-box" role="status">{dashboardData.cache.warning} Datenstand: {new Date(dashboardData.loadedAt).toLocaleString("de-AT")}. <button className="secondary-button" onClick={() => navigate("settings")}>API-Key prüfen</button></div>}
       {activeView === "settings" && <SettingsView onSaved={() => window.location.reload()} />}
       {activeView === "home" && (
@@ -292,12 +329,12 @@ export default function App() {
         />
       )}
 
-      {activeView === "assets" && <AssetsView data={dashboardData} loading={dashboardLoading} error={dashboardError} selectedAssetKey={selectedAssetKey} selectedAssetData={selectedAssetData} onSelectAsset={openAsset} onTradeCompleted={async () => { if (!await loadDashboardData({ refresh: true, feedback: false })) throw new Error("Bestände konnten nicht aktualisiert werden."); }} />}
+      {activeView === "assets" && <AssetsView data={dashboardData} loading={dashboardLoading} error={dashboardError} selectedAssetKey={selectedAssetKey} selectedAssetData={selectedAssetData} assetNavigation={assetNavigation} onSelectAsset={openAsset} onTradeCompleted={async () => { if (!await loadDashboardData({ refresh: true, feedback: false })) throw new Error("Bestände konnten nicht aktualisiert werden."); }} />}
 
       {activeView === "overview" && <PeriodOverview cashflowOverrides={cashflowOverrides} />}
       {activeView === "calendar" && <PerformanceCalendar data={dashboardData} loading={dashboardLoading} error={dashboardError} cashflowOverrides={cashflowOverrides} />}
 
-      {activeView === "profits" && <ProfitLossView onSelectAsset={openAsset} />}
+      {activeView === "profits" && <ProfitLossView onSelectAsset={openAsset} dashboardData={dashboardData} />}
 
       {activeView === "calculator" && (
         <TargetCalculator
@@ -307,9 +344,7 @@ export default function App() {
         />
       )}
 
-      {activeView === "adjustments" && <AdjustmentsView />}
-
-      {activeView === "tax" && <TaxCockpitView onSelectAsset={openAsset} />}
+      {activeView === "tax" && <TaxCockpitView onSelectAsset={openAsset} dashboardData={dashboardData} />}
       {activeView === "account" && <AccountDataView data={dashboardData} loading={dashboardLoading} error={dashboardError} onSelectAsset={openAsset} />}
       {activeView === "fees" && <FeesView data={dashboardData} loading={dashboardLoading} error={dashboardError} onSelectAsset={openAsset} />}
 
@@ -318,10 +353,9 @@ export default function App() {
 
       {activeView === "fiat" && (
         <>
-          <section className="hero-card fiat-hero">
+          <PageIntro>
             <div>
-              <div className="eyebrow">Fiat Wallet</div>
-              <h2>Cashflows ohne Störrauschen</h2>
+
               <PageDescription summary="Einzahlungen, Ausgaben und Transfers im Überblick. Passe die Zuordnung einzelner Buchungen bei Bedarf an.">
                 Markiere jede Abbuchung als Ausgabe oder Transfer auf ein anderes Konto. Kartenzahlungen werden standardmäßig als Ausgabe erkannt; deine Auswahl wird dauerhaft gespeichert. Zahlungsweg und Sparplan-Markierung stammen aus den Buchungsdaten.
               </PageDescription>
@@ -330,9 +364,9 @@ export default function App() {
               <span>Transaktionen</span>
               <strong>{visibleTransactions.length}</strong>
             </div>
-          </section>
+          </PageIntro>
 
-          {loading && <div className="loading-state">Lade Fiat-Wallet-Transaktionen...</div>}
+          {loading && <LoadingState>Lade Fiat-Wallet-Transaktionen …</LoadingState>}
 
           {error && <div className="error-box">{error}</div>}
 
@@ -343,6 +377,7 @@ export default function App() {
               <div className="view-panel">
                 <input
                   className="search-input"
+                  aria-label="Cashflow durchsuchen"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Suche nach Status, Datum, Richtung..."

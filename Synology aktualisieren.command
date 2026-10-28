@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-NAS_HOST="192.168.0.147"
+NAS_HOST="${SYNOLOGY_HOST:-192.168.0.147}"
 NAS_USER="Nico Hofer"
 REMOTE_DIR="/volume1/docker/Bitpanda-Dashboard"
 BACKUP_DIR="/volume1/docker/Bitpanda-Dashboard-backups"
@@ -26,7 +26,7 @@ finish() {
   # A .command file normally leaves Terminal's "process completed" window open,
   # depending on the user's profile settings. Close only the exact Terminal
   # window that ran this updater after the shell has had time to exit.
-  if [ "${TERM_PROGRAM:-}" = "Apple_Terminal" ]; then
+  if [ "${TERM_PROGRAM:-}" = "Apple_Terminal" ] && [ "${KEEP_UPDATE_WINDOW:-0}" != "1" ]; then
     terminal_tty="$(tty)"
     /usr/bin/osascript - "$terminal_tty" >/dev/null 2>&1 <<'APPLESCRIPT' &
 on run argv
@@ -57,7 +57,7 @@ if [ ! -f "scripts/package-release.py" ] || [ ! -f "docker-compose.yml" ]; then
   exit 1
 fi
 
-for command in python3 ditto tar ssh expect; do
+for command in python3 node npm ditto tar ssh expect; do
   if ! command -v "$command" >/dev/null 2>&1; then
     printf 'Benötigtes Programm fehlt: %s\n' "$command"
     exit 1
@@ -65,7 +65,7 @@ for command in python3 ditto tar ssh expect; do
 done
 
 run_with_synology_password() {
-  SYNOLOGY_PASSWORD="$SYNOLOGY_PASSWORD" /usr/bin/expect -f - -- "$@" <<'EXPECT_SCRIPT'
+  SYNOLOGY_PASSWORD="$SYNOLOGY_PASSWORD" expect -f - -- "$@" <<'EXPECT_SCRIPT'
 set timeout -1
 set password $env(SYNOLOGY_PASSWORD)
 set command $argv
@@ -98,18 +98,28 @@ perform_update() (
 set -euo pipefail
 TEMP_DIR=""
 UPDATE_LOG="$(mktemp /tmp/bitpanda-synology-update-log.XXXXXX)"
-TOTAL_STEPS=18
+TOTAL_STEPS=15
+case "${1:-nico}" in
+  nico) PERSON='Nico'; CONTAINER='bitpanda-dashboard-nico'; DATA_NAME='data-nico'; COMPOSE_ENV='.env'; COMPOSE_PROJECT='bitpanda-dashboard' ;;
+  josi) PERSON='Josi'; CONTAINER='bitpanda-dashboard-josi'; DATA_NAME='data-josi'; COMPOSE_ENV='.env.josi'; COMPOSE_PROJECT='bitpanda-josi' ;;
+  *) printf 'Unbekanntes Update-Ziel.\n'; exit 1 ;;
+esac
 CURRENT_STEP=0
 CURRENT_LABEL=""
 cleanup_update() {
   if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
     /bin/rm -rf -- "$TEMP_DIR"
   fi
-  /bin/rm -f -- "$UPDATE_LOG"
+  if [ "${KEEP_UPDATE_LOG:-0}" != "1" ]; then
+    /bin/rm -f -- "$UPDATE_LOG"
+  fi
 }
 show_update_error() {
   status=$?
   if [ "$status" -ne 0 ]; then
+    KEEP_UPDATE_LOG=1
+    printf '\nFehler bei Schritt %s/%s: %s\n' "$CURRENT_STEP" "$TOTAL_STEPS" "$CURRENT_LABEL"
+    printf 'Vollständiges Protokoll: %s\n' "$UPDATE_LOG"
     printf '\nTechnische Details (letzte Zeilen):\n'
     tail -n 24 "$UPDATE_LOG" 2>/dev/null || true
   fi
@@ -155,8 +165,8 @@ run_remote() {
   draw_progress
 }
 
-progress 'Release-Paket erstellen'
-python3 scripts/package-release.py >>"$UPDATE_LOG" 2>&1
+progress 'Frontend auf dem Mac bauen und Release prüfen'
+python3 scripts/package-release.py --synology >>"$UPDATE_LOG" 2>&1
 
 progress 'Temporären Arbeitsordner anlegen'
 TEMP_DIR="$(mktemp -d /tmp/bitpanda-synology-update.XXXXXX)"
@@ -165,7 +175,7 @@ progress 'Release-Paket entpacken'
 ditto -x -k "$SCRIPT_DIR/release/Bitpanda-Dashboard.zip" "$TEMP_DIR" >>"$UPDATE_LOG" 2>&1
 
 progress 'Release-Paket prüfen'
-if [ ! -f "$TEMP_DIR/Bitpanda-Dashboard/docker-compose.yml" ]; then
+if [ ! -f "$TEMP_DIR/Bitpanda-Dashboard/docker-compose.yml" ] || [ ! -f "$TEMP_DIR/Bitpanda-Dashboard/synology-frontend/index.html" ]; then
   printf 'Die Release-ZIP konnte nicht korrekt entpackt werden.\n' >>"$UPDATE_LOG"
   exit 1
 fi
@@ -182,7 +192,7 @@ run_with_synology_password scp -O "${SSH_OPTIONS[@]}" "$UPLOAD_ARCHIVE" \
   "$NAS_USER@$NAS_HOST:/tmp/Bitpanda-Dashboard-update.tar" >>"$UPDATE_LOG" 2>&1
 
 progress 'Programmdateien installieren'
-run_remote "mkdir -p '$REMOTE_DIR' && tar -xf /tmp/Bitpanda-Dashboard-update.tar -C '$REMOTE_DIR' && rm -f /tmp/Bitpanda-Dashboard-update.tar"
+run_remote "mkdir -p '$REMOTE_DIR' && rm -rf '$REMOTE_DIR/synology-frontend' && tar -xf /tmp/Bitpanda-Dashboard-update.tar -C '$REMOTE_DIR' && rm -f /tmp/Bitpanda-Dashboard-update.tar"
 
 REMOTE_PATH="PATH='/var/packages/ContainerManager/target/usr/bin:/var/packages/Docker/target/usr/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin' && export PATH && cd '$REMOTE_DIR'"
 
@@ -192,56 +202,54 @@ run_remote "$REMOTE_PATH && command -v docker >/dev/null && command -v docker-co
 progress 'Administratorzugriff bestätigen'
 run_remote "$REMOTE_PATH && sudo -v"
 
-progress 'Datenordner von Nico prüfen'
-run_remote "$REMOTE_PATH && D=\"\$(command -v docker)\" && M=\"\$(sudo \"\$D\" inspect bitpanda-dashboard-nico --format '{{range .Mounts}}{{if eq .Destination \"/data\"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)\" && { [ -z \"\$M\" ] || [ \"\$M\" = '$REMOTE_DIR/data-nico' ]; }"
-
-progress 'Datenordner von Josi prüfen'
-run_remote "$REMOTE_PATH && D=\"\$(command -v docker)\" && M=\"\$(sudo \"\$D\" inspect bitpanda-dashboard-josi --format '{{range .Mounts}}{{if eq .Destination \"/data\"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)\" && { [ -z \"\$M\" ] || [ \"\$M\" = '$REMOTE_DIR/data-josi' ]; }"
+progress "Datenordner von $PERSON prüfen"
+run_remote "$REMOTE_PATH && D=\"\$(command -v docker)\" && M=\"\$(sudo \"\$D\" inspect '$CONTAINER' --format '{{range .Mounts}}{{if eq .Destination \"/data\"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)\" && { [ -z \"\$M\" ] || [ \"\$M\" = '$REMOTE_DIR/$DATA_NAME' ]; }"
 
 BACKUP_STAMP="$(date +%Y%m%d-%H%M%S)"
 progress 'Backup-Ordner vorbereiten'
 run_remote "$REMOTE_PATH && sudo mkdir -p '$BACKUP_DIR'"
 
-progress 'Daten von Nico sichern'
-run_remote "$REMOTE_PATH && if [ -d data-nico ]; then sudo tar -czf '$BACKUP_DIR/$BACKUP_STAMP-data-nico.tar.gz' data-nico; fi"
+progress "Daten von $PERSON sichern"
+# Stop only the selected writer while creating a consistent archive. The exit
+# trap restores its previous running state even when tar or the SSH session fails.
+run_remote "$REMOTE_PATH && D=\"\$(command -v docker)\" && if [ -d '$DATA_NAME' ]; then RUNNING=\"\$(sudo \"\$D\" inspect --format '{{.State.Running}}' '$CONTAINER')\" || exit 1; restore_container() { R=\$?; trap - 0 HUP INT TERM; if [ \"\$RUNNING\" = true ]; then sudo \"\$D\" start '$CONTAINER' >/dev/null || exit 1; fi; exit \"\$R\"; }; trap restore_container 0; trap 'exit 1' HUP INT TERM; if [ \"\$RUNNING\" = true ]; then sudo \"\$D\" stop --time 30 '$CONTAINER' >/dev/null || exit 1; fi; sudo tar -czf '$BACKUP_DIR/$BACKUP_STAMP-$DATA_NAME.tar.gz' '$DATA_NAME' || exit 1; fi"
 
-progress 'Daten von Josi sichern'
-run_remote "$REMOTE_PATH && if [ -d data-josi ]; then sudo tar -czf '$BACKUP_DIR/$BACKUP_STAMP-data-josi.tar.gz' data-josi; fi"
+progress "Container von $PERSON aktualisieren · Docker-Cache verwenden"
+run_remote "$REMOTE_PATH && C=\"\$(command -v docker-compose)\" && sudo \"\$C\" --env-file '$COMPOSE_ENV' -p '$COMPOSE_PROJECT' -f docker-compose.yml -f docker-compose.synology.yml up -d --build --no-deps bitpanda-dashboard"
 
-progress 'Container von Nico neu bauen'
-run_remote "$REMOTE_PATH && C=\"\$(command -v docker-compose)\" && sudo \"\$C\" up -d --build"
-
-progress 'Container von Josi neu bauen'
-run_remote "$REMOTE_PATH && C=\"\$(command -v docker-compose)\" && sudo \"\$C\" --env-file .env.josi -p bitpanda-josi up -d --build"
-
-progress 'Erreichbarkeit beider Container prüfen'
-run_remote "$REMOTE_PATH && D=\"\$(command -v docker)\" && for N in bitpanda-dashboard-nico bitpanda-dashboard-josi; do I=0; while true; do S=\"\$(sudo \"\$D\" inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' \"\$N\")\" || exit 1; case \"\$S\" in 'running healthy') break ;; *unhealthy*|exited*|dead*|restarting*) sudo \"\$D\" logs --tail 20 \"\$N\"; exit 1 ;; esac; I=\$((I + 1)); if [ \"\$I\" -ge 60 ]; then sudo \"\$D\" logs --tail 20 \"\$N\"; exit 1; fi; sleep 2; done; done"
+progress "Erreichbarkeit von $PERSON prüfen"
+run_remote "$REMOTE_PATH && D=\"\$(command -v docker)\" && N='$CONTAINER' && I=0 && while true; do S=\"\$(sudo \"\$D\" inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' \"\$N\")\" || exit 1; case \"\$S\" in 'running healthy') break ;; *unhealthy*|exited*|dead*|restarting*) sudo \"\$D\" logs --tail 20 \"\$N\"; exit 1 ;; esac; I=\$((I + 1)); if [ \"\$I\" -ge 60 ]; then sudo \"\$D\" logs --tail 20 \"\$N\"; exit 1; fi; sleep 2; done"
 CURRENT_STEP=$TOTAL_STEPS
 CURRENT_LABEL='Fertig'
 draw_progress '  ✓'
 if [ -t 1 ]; then printf '\n'; fi
 )
 
+UPDATE_TARGET="nico"
 while true; do
   printf '\n'
   set +e
-  perform_update
+  perform_update "$UPDATE_TARGET"
   update_status=$?
   set -e
   if [ "$update_status" -eq 0 ]; then
-    printf '\n✓ Update erfolgreich abgeschlossen\n\n'
-    printf '  Nico  · http://192.168.0.147:8085\n'
-    printf '  Josi  · http://192.168.0.147:8086\n'
+    printf '\n✓ Update für %s erfolgreich abgeschlossen\n\n' "$UPDATE_TARGET"
+    if [ "$UPDATE_TARGET" = 'nico' ]; then
+      printf '  Nico  · http://%s:8085\n' "$NAS_HOST"
+    else
+      printf '  Josi  · http://%s:8086\n' "$NAS_HOST"
+    fi
   else
+    KEEP_UPDATE_WINDOW=1
     printf '\n✗ Das Update wurde mit einem Fehler beendet. Die vorhandenen Datenordner wurden nicht gelöscht.\n'
   fi
 
-  printf '\nR = erneut aktualisieren · Enter = Fenster schließen: '
+  printf '\nR = Nico aktualisieren · J = Josi aktualisieren · Enter = Fenster schließen: '
   IFS= read -r action
-  if [[ "$action" =~ ^[Rr]$ ]]; then
-    printf '\nUpdate wird erneut gestartet …\n\n'
-    continue
-  fi
+  case "$action" in
+    r|R) UPDATE_TARGET='nico'; printf '\nUpdate für Nico wird gestartet …\n'; continue ;;
+    j|J) UPDATE_TARGET='josi'; printf '\nUpdate für Josi wird gestartet …\n'; continue ;;
+  esac
   break
 done
 

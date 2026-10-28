@@ -835,6 +835,14 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 
 .portfolio-positions-card { padding-bottom: 18px; }
+.position-category-filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 18px 18px; }
+.position-category-filter { display: inline-flex; align-items: center; gap: 8px; }
+.position-category-filter span { color: var(--muted); font-size: 11px; }
+.position-category-filter[aria-pressed="true"] { border-color: var(--accent); background: rgba(91,215,162,.12); }
+.position-category-group + .position-category-group { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.position-category-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 0 18px; }
+.position-category-heading h4 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; }
+.position-category-heading > span { color: var(--muted); font-size: 12px; }
 .position-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; padding: 18px 18px 0; }
 .position-card { min-width: 0; display: grid; gap: 12px; padding: 17px; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(145deg, rgba(255,255,255,.035), rgba(255,255,255,.012)); }
 .position-card header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
@@ -1364,10 +1372,6 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   overflow-wrap: anywhere;
 }
 
-.calculator-results {
-  margin-top: 0;
-}
-
 .tax-card {
   margin-bottom: 18px;
   overflow: visible;
@@ -1871,15 +1875,7 @@ body::before {
 /* Every top-level view uses the same vertical rhythm. Components historically
    carried their own bottom margins, which made spacing differ from one page to
    the next. Keep the spacing at the view level instead. */
-.app-content > *,
-.app-content > div > * { margin-bottom: 0; }
-
-/* Vertikaler Seitenrhythmus gilt für View-Container, nie für ihre Raster-Kacheln.
-   Ohne diese Ausnahmen erhielten alle Grid-Elemente ab dem zweiten einen
-   zusätzlichen oberen Abstand und wirkten dadurch versetzt. */
-.app-content > div:not(.portfolio-home):not(.fusion-view):not(.fees-view):not(.tax-view):not(.account-data-view):not(.stats-grid):not(.top-grid):not(.chart-grid):not(.dashboard-grid):not(.split-grid):not(.overview-grid):not(.ranking-grid):not(.allocation-layout) > * + * {
-  margin-top: var(--page-gap);
-}
+.app-content > * { margin-bottom: 0; }
 
 .app-content > :is(.stats-grid, .top-grid, .chart-grid, .dashboard-grid, .split-grid, .overview-grid, .ranking-grid, .allocation-layout) > * + * {
   margin-top: 0;
@@ -2484,8 +2480,8 @@ summary:focus-visible {
 .fusion-cost-preview span { color: var(--muted); font-size: 11px; }
 .fusion-cost-preview strong { font-size: 15px; }
 .fusion-cost-preview > small { grid-column: 1 / -1; color: var(--muted); line-height: 1.45; }
-.fee-field { border-color: rgba(244,183,64,.35) !important; background: rgba(244,183,64,.07) !important; }
-.fee-field strong, .fee-field dd { color: #f6cf78; }
+.fee-field { border-color: var(--line); background: var(--surface-soft); }
+.fee-field strong, .fee-field dd { color: var(--text); }
 .fusion-order-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--line); }
 .fusion-order-row > div { display: grid; gap: 3px; }
 .fusion-order-row span { color: var(--muted); font-size: 12px; text-transform: capitalize; }
@@ -2994,3 +2990,24 @@ select option { background: #101820; color: var(--text); }
     justify-content: flex-end;
   }
 }
+
+.allocation-table tr[role="button"],
+.allocation-mobile-card[role="button"],
+.allocation-legend > [role="button"] { cursor: pointer; }
+.allocation-table tr[role="button"]:hover,
+.allocation-mobile-card[role="button"]:hover,
+.allocation-legend > [role="button"]:hover { background-color: rgba(127, 127, 127, 0.08); }
+.allocation-table tr[role="button"]:focus-visible,
+.allocation-mobile-card[role="button"]:focus-visible,
+.allocation-legend > [role="button"]:focus-visible { outline: 2px solid #5bd7a2; outline-offset: -2px; }
+.portfolio-positions-target { scroll-margin-top: 24px; }
+.portfolio-positions-target:focus { outline: none; }
+
+.position-card-chart-link { display: grid; gap: 18px; cursor: pointer; border-radius: 6px; }
+.position-card-chart-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; }
+.position-card-chart-link:hover .position-card-identity strong { color: var(--accent); }
+#asset-market-chart { scroll-margin-top: 24px; }
+#asset-market-chart:focus { outline: none; }
+
+.portfolio-chart-mode-note { margin: 8px 22px 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+@media (max-width: 700px) { .portfolio-chart-mode-note { margin-inline: 14px; } }

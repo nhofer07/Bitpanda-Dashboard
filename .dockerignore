@@ -14,3 +14,10 @@ data
 *.log
 .DS_Store
 mobile
+
+# Persistent NAS data never belongs in the Docker build context.
+data-*
+*-backups
+backups
+desktop-widget
+scripts

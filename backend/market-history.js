@@ -126,7 +126,7 @@ export async function loadMarketHistory({ symbol, name = '', category = 'other',
           const providerTokens = new Set(nameTokens(providerName));
           const nameMatches = !name || category === 'crypto' || !providerTokens.size || expectedTokens.some(token => providerTokens.has(token));
           const points = extractHistory(candidateResult);
-          if (points.length >= 2 && nameMatches) {
+          if (points.length >= 2 && nameMatches && typeof candidateResult?.meta?.currency === 'string' && /^[A-Za-z]{3}$/.test(candidateResult.meta.currency)) {
             const loaded = { result: candidateResult, fallback: range === '1d' && yahooRange === '5d' };
             const lastTime = Date.parse(points.at(-1).date);
             if (!best || lastTime > Date.parse(extractHistory(best.result).at(-1).date)) best = loaded;

@@ -1,0 +1,30 @@
+[
+  {
+    "container": "app-content",
+    "before": "page-heading",
+    "after": "calculator-view",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "calculator-view",
+    "before": "page-intro ",
+    "after": "calculator-grid",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "calculator-view",
+    "before": "calculator-grid",
+    "after": "stats-grid calculator-results",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "calculator-view",
+    "before": "stats-grid calculator-results",
+    "after": "table-card tax-card",
+    "gap": 20,
+    "expected": 20
+  }
+]

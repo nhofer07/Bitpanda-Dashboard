@@ -48,3 +48,70 @@ test('repairs a confirmed cash-to-holding settlement gap', () => {
   withdrawal[3].openCostBasis+=10;withdrawal[4].openCostBasis+=10;
   assert.deepEqual(excludeIsolatedPortfolioDips(withdrawal),withdrawal);
 });
+
+test('screenshot reconstruction fills only the confirmed outage and is idempotent', () => {
+  const before = {createdAt:'2026-10-13T17:44:29Z',totalValue:3334.34,openCostBasis:3349.6224498834,openPositionCount:8};
+  const after = {createdAt:'2026-10-14T09:57:29Z',totalValue:3349.5};
+  const input = [before,after];
+  const filled = excludeCorrectedSnapshots(input);
+  assert.ok(filled.length > 50);
+  assert.equal(Math.max(...filled.map(p=>p.totalValue)),3357.12);
+  assert.equal(filled[0],before);
+  assert.equal(filled.at(-1),after);
+  assert.ok(filled.slice(1,-1).every(p=>p.reconstructed && Date.parse(p.createdAt)>Date.parse(before.createdAt) && Date.parse(p.createdAt)<Date.parse(after.createdAt)));
+  assert.deepEqual(excludeCorrectedSnapshots(filled),filled);
+  assert.deepEqual(excludeCorrectedSnapshots([{...before,openCostBasis:5000},after]),[{...before,openCostBasis:5000},after]);
+  assert.deepEqual(excludeCorrectedSnapshots([before,{...after,createdAt:'2026-10-14T10:57:29Z'}]),[before,{...after,createdAt:'2026-10-14T10:57:29Z'}]);
+  const actual={createdAt:'2026-10-14T03:00:00Z',totalValue:3344};
+  assert.ok(excludeCorrectedSnapshots([before,actual,after]).includes(actual));
+});
+
+const confirmedEthDip = [
+  {
+    "createdAt": "2026-10-14T15:49:11.573Z",
+    "totalValue": 3234.577875097398,
+    "openCostBasis": 2903.3924498834,
+    "unrealizedProfit": -23.35457478600165,
+    "openPositionCount": 6
+  },
+  {
+    "createdAt": "2026-10-14T15:50:32.269Z",
+    "totalValue": 3234.1129543982875,
+    "openCostBasis": 3023.2624498833998,
+    "unrealizedProfit": -23.519495485112202,
+    "openPositionCount": 6
+  },
+  {
+    "createdAt": "2026-10-14T15:51:27.507Z",
+    "totalValue": 3234.1129543982875,
+    "openCostBasis": 3023.2624498833998,
+    "unrealizedProfit": -23.519495485112202,
+    "openPositionCount": 6
+  },
+  {
+    "createdAt": "2026-10-14T15:52:26.242Z",
+    "totalValue": 3233.0463470037057,
+    "openCostBasis": 3023.2624498833998,
+    "unrealizedProfit": -24.586102879693954,
+    "openPositionCount": 6
+  },
+  {
+    "createdAt": "2026-10-14T15:53:31.280Z",
+    "totalValue": 3231.63779768889,
+    "openCostBasis": 3023.2624498833998,
+    "unrealizedProfit": -25.994652194509854,
+    "openPositionCount": 6
+  },
+  {
+    "createdAt": "2026-10-14T15:55:32.835Z",
+    "totalValue": 3232.5117842999166,
+    "openCostBasis": 3023.2624498833998,
+    "unrealizedProfit": -25.12066558348306,
+    "openPositionCount": 6
+  }
+];
+test('removes exactly the confirmed ETH override dip without removing another account or changing valid neighbors', () => {
+ const neighbor = { createdAt: '2026-10-14T15:57:31.980Z', totalValue: 3330.8633047708986, openCostBasis: 3115.8466345522124, unrealizedProfit: -19.353329781313732, openPositionCount: 6 };
+ const different = { ...confirmedEthDip[0], totalValue: confirmedEthDip[0].totalValue + 1 };
+ assert.deepEqual(excludeCorrectedSnapshots([...confirmedEthDip, neighbor, different]), [different, neighbor]);
+});

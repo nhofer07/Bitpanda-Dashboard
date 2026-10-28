@@ -1,4 +1,11 @@
+import { PORTFOLIO_TIMEFRAMES, normalizePortfolioHistory, createPortfolioHistoryLoader } from "./portfolio-api-history.js";
+import { catalogCategory, enrichTradeAssetIdentity } from "./asset-identity.js";
+import { createCashflowStore } from "./cashflow-store.js";
+import { enrichTradesWithLeverageFees } from "./leverage-fees.js";
+import { loadBitpandaChart } from "./bitpanda-chart.js";
+import { applyReportedPortfolio, valueOpenPosition, accountAssetTicker } from "./reported-portfolio.js";
 import { openAuthSessions } from "./auth-sessions.js";
+import { readDashboardCache, writeDashboardCache, writeJsonAtomically } from "./json-storage.js";
 import { portfolioSnapshotIssue, excludeCorrectedSnapshots } from "./portfolio-history.js";
 import { compactWidgetData } from "./widget-data.js";
 import { localPortfolioPreview } from "./local-preview.js";
@@ -239,13 +246,12 @@ const TICKER_URL = "https://developer.bitpanda.com/v1/ticker";
 const PRICE_CACHE_MS = 60 * 1000;
 const DASHBOARD_CACHE_MS = 5 * 60 * 1000;
 const BACKGROUND_REFRESH_MS = 60 * 1000;
-const DASHBOARD_CALCULATION_VERSION = 17;
+const DASHBOARD_CALCULATION_VERSION = 22;
 const SNAPSHOT_MIN_INTERVAL_MS = 55 * 1000;
 const DEFAULT_TRADE_FEE_EUR = 1;
 const FIXED_TRADE_FEE_START_UNIX = Date.parse("2026-01-29T00:00:00+01:00") / 1000;
 let CACHE_DIR = path.join(accountDir(), ".cache");
 let DASHBOARD_CACHE_FILE = path.join(CACHE_DIR, "dashboard-data.json");
-let MANUAL_POSITIONS_FILE = path.join(accountDir(), "manual-positions.json");
 let CASHFLOW_OVERRIDES_FILE = path.join(accountDir(), "cashflow-overrides.json");
 const tickerCache = new Map();
 const MARKET_CACHE_MS = 3 * 60 * 1000;
@@ -287,10 +293,10 @@ app.put("/settings", async (req, res) => {
     }
     apiKey = next.bitpanda; finnhubApiKey = next.finnhub; fusionApiKey = next.fusion;
     settingsRevision += 1;
+    portfolioHistoryLoader.clear();
     dashboardRefreshPromise = null;
     CACHE_DIR = path.join(accountDir(), ".cache");
     DASHBOARD_CACHE_FILE = path.join(CACHE_DIR, "dashboard-data.json");
-    MANUAL_POSITIONS_FILE = path.join(accountDir(), "manual-positions.json");
     CASHFLOW_OVERRIDES_FILE = path.join(accountDir(), "cashflow-overrides.json");
     analystCache.clear();
     res.json(settingsStatus());
@@ -366,13 +372,14 @@ async function fetchPaginated(endpoint, params = {}) {
   return uniqueById(allItems);
 }
 
-async function publicApiRequest(endpoint, { method = "GET", params = {}, body } = {}) {
+async function publicApiRequest(endpoint, { method = "GET", params = {}, body, timeoutMs } = {}) {
   const url = new URL(`${PUBLIC_BASE_URL}${endpoint}`);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
   }
   const response = await fetch(url, {
     method,
+    ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
     headers: {
       "x-api-key": apiKey,
       Accept: "application/json",
@@ -425,12 +432,7 @@ async function loadPublicAssetCatalog() {
 }
 
 function publicAssetCategory(item = {}) {
-  const text = `${item.group || ""} ${item.type || ""}`.toLowerCase();
-  if (text.includes("etf")) return "etf";
-  if (/coin|token|crypto/.test(text)) return "crypto";
-  if (/metal|commodity/.test(text)) return "metal";
-  if (/equity|security|stock/.test(text)) return "stock";
-  return "other";
+  return catalogCategory(item);
 }
 
 function cleanDecimal(value, field, { allowZero = false } = {}) {
@@ -806,32 +808,18 @@ function createMarketAnalysis(asset, news = [], analyst = null) {
 function enrichOpenPositionsWithPrices(openPositions, tickerPrices) {
   return openPositions.map(position => {
     const symbol = normalizeSymbol(position.underlyingSymbol || position.assetKey || position.name);
-    const ticker = tickerPrices.get(symbol);
-    const category = getTickerCategory(symbol, ticker);
-    const currentPrice = ticker ? Number(ticker.price || 0) : null;
-    const currentQuantity = Number(position.currentQuantity || 0);
-    const costBasis = Number(position.costBasis || 0);
-    const currentValue = currentPrice !== null ? currentQuantity * currentPrice : null;
-    const unrealizedProfit = currentValue !== null ? currentValue - costBasis : null;
-
+    const candidate = tickerPrices.get(symbol);
+    const category = position.metadataCategory || getTickerCategory(symbol, candidate);
+    const ticker = candidate?.accountAssetId || (candidate && catalogCategory(candidate) === category) ? candidate : null;
     return {
       ...position,
       priceSymbol: symbol,
-      displayName: getAssetDisplayName(symbol, ticker),
+      displayName: position.metadataCategory ? position.displayName : getAssetDisplayName(symbol, ticker && getTickerCategory(symbol, ticker) === catalogCategory(ticker) ? ticker : null),
       category,
       categoryLabel: ASSET_CATEGORY_LABELS[category] || ASSET_CATEGORY_LABELS.other,
       tickerType: ticker?.type || null,
-      currentPrice,
-      currentValue,
-      unrealizedProfit,
-      unrealizedProfitPercent:
-        unrealizedProfit !== null && costBasis > 0
-          ? unrealizedProfit / costBasis * 100
-          : null,
-      priceChangeDay: ticker ? Number(ticker.price_change_day || 0) : null,
-      priceCurrency: ticker?.currency || null,
-      priceSource: ticker ? "Bitpanda Price Ticker" : null,
-      priceUpdatedAt: ticker ? new Date().toISOString() : null
+      ...valueOpenPosition(position, ticker),
+      priceChangeDay: ticker?.accountAssetId ? null : ticker?.price_change_day == null ? null : Number(ticker.price_change_day),
     };
   });
 }
@@ -983,77 +971,20 @@ async function readJsonFile(filePath, fallback) {
 }
 
 async function writeJsonFile(filePath, data) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+  await writeJsonAtomically(filePath, data);
 }
 
-async function readManualPositions() {
-  const data = await readJsonFile(MANUAL_POSITIONS_FILE, { positions: {} });
-  const positions = {};
-
-  for (const [rawSymbol, rawPosition] of Object.entries(data?.positions || {})) {
-    const symbol = normalizeSymbol(rawSymbol);
-    if (!symbol) continue;
-
-    // Older entries had no mode and used to be added to the wallet quantity.
-    // Manual edits are now always exact overrides unless explicitly marked as add.
-    positions[symbol] = {
-      ...rawPosition,
-      mode: rawPosition?.mode === "add" ? "add" : "override"
-    };
-  }
-
-  return { positions };
+const cashflowStores = new Map();
+function cashflowStore() {
+  const file = CASHFLOW_OVERRIDES_FILE;
+  if (!cashflowStores.has(file)) cashflowStores.set(file, createCashflowStore({
+    read: () => readJsonFile(file, { overrides: {} }),
+    write: data => writeJsonFile(file, data)
+  }));
+  return cashflowStores.get(file);
 }
-
-async function writeManualPositions(data) {
-  const positions = {};
-
-  for (const [rawSymbol, rawPosition] of Object.entries(data?.positions || {})) {
-    const symbol = normalizeSymbol(rawSymbol);
-    if (!symbol) continue;
-
-    const quantity = Number(rawPosition?.quantity || 0);
-    const averageEntry = Number(rawPosition?.averageEntry || 0);
-    positions[symbol] = {
-      quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 0,
-      averageEntry: Number.isFinite(averageEntry) && averageEntry >= 0 ? averageEntry : 0,
-      mode: rawPosition?.mode === "add" ? "add" : "override",
-      note: String(rawPosition?.note || "").trim(),
-      enabled: rawPosition?.enabled === true,
-      updatedAt: new Date().toISOString()
-    };
-  }
-
-  const normalized = { positions };
-  await writeJsonFile(MANUAL_POSITIONS_FILE, normalized);
-
-  return normalized;
-}
-
-const CASHFLOW_CLASSES = new Set(["deposit", "expense", "transfer", "withdrawal", "refund", "ignore"]);
-
-async function readCashflowOverrides() {
-  const data = await readJsonFile(CASHFLOW_OVERRIDES_FILE, { overrides: {} });
-  const overrides = {};
-  for (const [id, classification] of Object.entries(data?.overrides || {})) {
-    if (id && id.length <= 128 && CASHFLOW_CLASSES.has(classification)) overrides[id] = classification;
-  }
-  return { overrides };
-}
-
-async function writeCashflowOverrides(data) {
-  const entries = Object.entries(data?.overrides || {});
-  if (entries.length > 10000) throw new Error("Zu viele Cashflow-Korrekturen.");
-  const overrides = {};
-  for (const [id, classification] of entries) {
-    if (!id || id.length > 128 || !CASHFLOW_CLASSES.has(classification)) throw new Error("Ungültige Cashflow-Korrektur.");
-    overrides[id] = classification;
-  }
-  const normalized = { overrides };
-  await writeJsonFile(CASHFLOW_OVERRIDES_FILE, normalized);
-  return normalized;
-}
+async function readCashflowOverrides() { return cashflowStore().read(); }
+async function writeCashflowOverrides(data) { return cashflowStore().update(data); }
 
 function getFiatTotal(fiatPeriods = []) {
   return fiatPeriods.reduce((sum, period) => sum + Number(period.net || 0), 0);
@@ -1065,123 +996,6 @@ function getDividendTotal(fiatPeriods = []) {
 
 function getRealizedProfitTotal(assets = []) {
   return assets.reduce((sum, asset) => sum + Number(asset.realizedProfit || 0), 0);
-}
-
-function findAssetBySymbol(assets = [], symbol) {
-  return assets.find(asset => normalizeSymbol(asset.assetKey || asset.name) === symbol) || null;
-}
-
-function createManualPosition(baseAsset, manualPosition, symbol) {
-  const quantity = Number(manualPosition?.quantity || 0);
-  if (!quantity) return null;
-
-  const sourceAsset = baseAsset || {
-    assetKey: symbol,
-    name: symbol,
-    displayName: getAssetDisplayName(symbol),
-    category: getTickerCategory(symbol),
-    categoryLabel: ASSET_CATEGORY_LABELS[getTickerCategory(symbol)] || ASSET_CATEGORY_LABELS.other,
-    trades: []
-  };
-
-  const reconstructedQuantity = Number(sourceAsset.currentQuantity || 0);
-  const historicalAverageEntry =
-    Number(sourceAsset.averageRemainingCost || 0) ||
-    (reconstructedQuantity > 0 ? Number(sourceAsset.costBasis || 0) / reconstructedQuantity : 0);
-  const averageRemainingCost = Number(manualPosition?.averageEntry || 0) || historicalAverageEntry;
-  const costBasis = averageRemainingCost * quantity;
-
-  return ensureAssetMetadata({
-    ...sourceAsset,
-    assetKey: symbol,
-    name: baseAsset.name || symbol,
-    currentQuantity: quantity,
-    costBasis,
-    averageRemainingCost,
-    manualQuantity: quantity,
-    manualCostBasis: costBasis,
-    walletBalance: null,
-    walletReconciled: false,
-    manualPosition: true,
-    manualMode: manualPosition?.mode === "override" ? "override" : "add",
-    manualNote: manualPosition.note || "",
-    positionSource: manualPosition.note || "Manuell",
-    quantityDifference: null
-  });
-}
-
-function applyManualPositions(openPositions, profitLoss, manualPositions) {
-  const positions = [...openPositions];
-  const bySymbol = new Map(positions.map(position => [normalizeSymbol(position.assetKey || position.name), position]));
-  const sourceAssets = [
-    ...(profitLoss.openPositions || []),
-    ...(profitLoss.assets || [])
-  ];
-
-  for (const [rawSymbol, manualPosition] of Object.entries(manualPositions?.positions || {})) {
-    const symbol = normalizeSymbol(rawSymbol);
-    const quantity = Number(manualPosition?.quantity || 0);
-
-    if (!symbol || manualPosition?.enabled !== true) continue;
-
-    if (manualPosition?.mode === "override" && quantity <= 0) {
-      const index = positions.findIndex(position => normalizeSymbol(position.assetKey || position.name) === symbol);
-      if (index >= 0) positions.splice(index, 1);
-      bySymbol.delete(symbol);
-      continue;
-    }
-
-    if (quantity <= 0) continue;
-
-    const baseAsset = findAssetBySymbol(sourceAssets, symbol);
-    const manualAsset = createManualPosition(baseAsset, manualPosition, symbol);
-    if (!manualAsset) continue;
-
-    if (bySymbol.has(symbol)) {
-      const index = positions.findIndex(position => normalizeSymbol(position.assetKey || position.name) === symbol);
-      const existingPosition = positions[index];
-
-      if (manualPosition?.mode === "override") {
-        positions[index] = {
-          ...existingPosition,
-          ...manualAsset,
-          walletBalance: existingPosition.walletBalance,
-          walletReconciled: false,
-          manualPosition: true,
-          manualMode: "override",
-          positionSource: manualAsset.manualNote || "Manuelle Überschreibung"
-        };
-        bySymbol.set(symbol, positions[index]);
-        continue;
-      }
-
-      const currentQuantity = Number(existingPosition.currentQuantity || 0) + Number(manualAsset.manualQuantity || 0);
-      const costBasis = Number(existingPosition.costBasis || 0) + Number(manualAsset.manualCostBasis || 0);
-
-      positions[index] = {
-        ...existingPosition,
-        displayName: manualAsset.displayName || existingPosition.displayName,
-        category: manualAsset.category || existingPosition.category,
-        categoryLabel: manualAsset.categoryLabel || existingPosition.categoryLabel,
-        currentQuantity,
-        costBasis,
-        averageRemainingCost: currentQuantity > 0 ? costBasis / currentQuantity : 0,
-        manualPosition: true,
-        manualQuantity: Number(manualAsset.manualQuantity || 0),
-        manualCostBasis: Number(manualAsset.manualCostBasis || 0),
-        manualNote: manualAsset.manualNote,
-        positionSource: manualAsset.manualNote
-          ? `${existingPosition.walletName || "Wallet"} + ${manualAsset.manualNote}`
-          : `${existingPosition.walletName || "Wallet"} + Manuell`
-      };
-    } else {
-      positions.push(manualAsset);
-    }
-
-    bySymbol.set(symbol, manualAsset);
-  }
-
-  return positions;
 }
 
 function createPortfolioSummary({ transactions, fiatPeriods, profitLoss, openPositions, priceSummary, liquidBalance }) {
@@ -1229,7 +1043,7 @@ function ensureAssetMetadata(asset) {
   if (!asset) return asset;
 
   const symbol = normalizeSymbol(asset.assetKey || asset.name);
-  const category = getTickerCategory(symbol, asset.tickerType ? { type: asset.tickerType } : null);
+  const category = asset.metadataCategory || getTickerCategory(symbol, asset.tickerType ? { type: asset.tickerType } : null);
 
   return {
     ...asset,
@@ -1303,9 +1117,6 @@ function ensurePortfolioReturnFields(dashboardData) {
   if (dashboardData.portfolio?.worstPosition?.custodySource === "Bitpanda Earn/Staking") {
     dashboardData.portfolio.worstPosition.custodySource = "Bitpanda Custody";
   }
-  if (dashboardData.manualPositions?.positions?.ETH?.note === "Earn") {
-    dashboardData.manualPositions.positions.ETH.note = "";
-  }
 
   const realizedProfit = Number(dashboardData.portfolio.realizedProfit || 0);
   const unrealizedProfit = Number(dashboardData.portfolio.unrealizedProfit || 0);
@@ -1330,11 +1141,34 @@ function ensurePortfolioReturnFields(dashboardData) {
   };
 }
 
+const portfolioHistoryLoader = createPortfolioHistoryLoader(async timeframe => {
+  const revision = settingsRevision;
+  const eurCurrencyId = await getPublicEurCurrencyId();
+  if (revision !== settingsRevision) throw new Error("Konto wurde während des Abrufs geändert.");
+  const payload = await publicApiRequest("/portfolio-history", { params: { timeframe, equivalent_currency_id: eurCurrencyId }, timeoutMs: 15_000 });
+  if (revision !== settingsRevision) throw new Error("Konto wurde während des Abrufs geändert.");
+  return normalizePortfolioHistory(payload, { timeframe, eurCurrencyId });
+});
+
+app.get("/portfolio-history", async (req, res) => {
+  const range = req.query.range ?? "1d";
+  const timeframe = typeof range === "string" && Object.hasOwn(PORTFOLIO_TIMEFRAMES, range) ? PORTFOLIO_TIMEFRAMES[range] : null;
+  if (!timeframe) return res.status(400).json({ error: "Ungültiger Portfolio-Zeitraum." });
+  const revision = settingsRevision;
+  try {
+    const result = await portfolioHistoryLoader.load(timeframe, { refresh: req.query.refresh === "1" });
+    if (revision !== settingsRevision) return res.status(409).json({ error: "Konto wurde während des Abrufs geändert." });
+    res.json(result);
+  } catch { res.status(502).json({ error: "Bitpanda-Portfoliohistorie ist derzeit nicht verfügbar. Der gespeicherte Verlauf bleibt erhalten." }); }
+});
+
 function appendPortfolioSnapshot(cache, dashboardData) {
   const historyStartedAt = new Date(dashboardData.portfolioHistoryStartedAt).getTime();
   const snapshots = (Array.isArray(cache?.snapshots) ? cache.snapshots : [])
     .filter(snapshot => new Date(snapshot?.createdAt).getTime() >= historyStartedAt);
   if (portfolioSnapshotIssue(dashboardData)) return snapshots;
+  // Retain independent account observations even when official history works.
+  // Otherwise a single rolling daily point cannot verify historical API spikes.
   const latestSnapshot = snapshots[snapshots.length - 1];
   const now = Date.now();
 
@@ -1376,10 +1210,9 @@ function compactPortfolioSnapshots(snapshots, now = Date.now()) {
 }
 
 async function buildDashboardData(previousCache = null) {
-  const [transactions, dividends, manualPositions, leveragePositions] = await Promise.all([
+  const [transactions, dividends, leveragePositions] = await Promise.all([
     fetchWantedFiatMovements(),
     fetchDividendMovements(),
-    readManualPositions(),
     fetchLeveragePositions()
   ]);
   // Bitpanda flags recurring-plan deposits, but not always the buy that follows.
@@ -1425,23 +1258,6 @@ async function buildDashboardData(previousCache = null) {
     console.error(error);
   }
 
-  openPositions = applyManualPositions(openPositions, profitLoss, manualPositions);
-
-  // A Fusion limit order reserves an asset and can therefore make the normal
-  // wallet balance appear as zero. It stays opt-in through the correction view.
-  const reservedPositions = getReservedPositions([...custodyTransactions, ...reservedTransactions]);
-  openPositions = [...openPositions, ...leveragePositions];
-
-  let pricedOpenPositions = openPositions;
-
-  try {
-    const tickerPrices = await fetchTickerPrices(openPositions.map(position => position.underlyingSymbol || position.assetKey || position.name));
-    pricedOpenPositions = enrichOpenPositionsWithPrices(openPositions, tickerPrices)
-      .sort((a, b) => Number(b.currentValue ?? b.costBasis ?? 0) - Number(a.currentValue ?? a.costBasis ?? 0));
-  } catch (error) {
-    priceError = error.message;
-    console.error(error);
-  }
 
   let accountInsights = { available: false, error: "Zusätzliche Kontodaten konnten nicht aus der API geladen werden." };
   if (accountInputs) {
@@ -1452,6 +1268,40 @@ async function buildDashboardData(previousCache = null) {
       accountInsights.error = "Kontobuchungen konnten nicht vollständig ausgewertet werden.";
     }
   }
+  if (accountInsights.portfolioAvailable) {
+    openPositions = applyReportedPortfolio(openPositions, accountInsights.portfolio, profitLoss.assets).map(ensureAssetMetadata);
+    reconciliation.source = "Bitpanda Portfolio API";
+  } else {
+    balanceError ||= "Aktueller Bitpanda-Portfolio-Bestand konnte nicht geladen werden.";
+  }
+
+  // Keep reservation details for account diagnostics. Reported total balances
+  // already include reserved holdings; do not add them a second time.
+  const reservedPositions = getReservedPositions([...custodyTransactions, ...reservedTransactions]);
+  openPositions = [...openPositions, ...leveragePositions];
+
+  let pricedOpenPositions = enrichOpenPositionsWithPrices(openPositions, new Map());
+
+  const tickerResults = await Promise.allSettled([
+    fetchTickerPrices(openPositions.map(position => position.underlyingSymbol || position.assetKey || position.name)),
+    ...openPositions.filter(position => position.reportedAssetId).map(async position => {
+      const payload = await publicApiRequest(`/tickers/${encodeURIComponent(position.reportedAssetId)}`);
+      const item = accountAssetTicker(payload, position.reportedAssetId, accountInputs?.eurCurrencyId);
+      return { symbol: position.assetKey, item };
+    })
+  ]);
+  const tickerPrices = tickerResults[0].status === 'fulfilled' ? new Map(tickerResults[0].value) : new Map();
+  const unavailablePrices = [];
+  for (const result of tickerResults.slice(1)) {
+    if (result.status === 'fulfilled' && result.value.item) {
+      const { symbol, item } = result.value;
+      tickerPrices.set(symbol, { ...tickerPrices.get(symbol), ...item });
+    } else unavailablePrices.push(result.status === 'fulfilled' ? result.value.symbol : 'Asset-Ticker');
+  }
+  if (unavailablePrices.length) priceError = 'Einzelne Bitpanda-Stückkurse sind derzeit nicht verfügbar. Gemeldete Positionswerte bleiben erhalten.';
+  pricedOpenPositions = enrichOpenPositionsWithPrices(openPositions, tickerPrices)
+    .sort((a, b) => Number(b.currentValue ?? b.costBasis ?? 0) - Number(a.currentValue ?? a.costBasis ?? 0));
+
   const investedOpenPositions = pricedOpenPositions.filter(position => !isCashPlusPosition(position));
   const priceSummary = summarizeOpenPositions(investedOpenPositions);
   const liquidBalance = summarizeLiquidBalance(fiatWallets, pricedOpenPositions, walletBalances);
@@ -1482,7 +1332,6 @@ async function buildDashboardData(previousCache = null) {
     priceError,
     liquidBalanceError,
     portfolio,
-    manualPositions,
     reservedPositions,
     leveragePositions,
     leverageStatus: leveragePositions.status || { available: true },
@@ -1490,6 +1339,8 @@ async function buildDashboardData(previousCache = null) {
     fiatWallets,
     snapshots: []
   };
+  try { dashboardData.portfolioApiHistory = await portfolioHistoryLoader.load("DAY"); }
+  catch { dashboardData.portfolioApiHistory = { available: false, warning: "Bitpanda-Portfoliohistorie ist derzeit nicht verfügbar." }; }
   dashboardData.portfolioHistoryWarning = portfolioSnapshotIssue(dashboardData);
   dashboardData.snapshots = appendPortfolioSnapshot(previousCache, dashboardData);
 
@@ -1497,7 +1348,7 @@ async function buildDashboardData(previousCache = null) {
 }
 
 async function getDashboardData({ forceRefresh = false } = {}) {
-  const cachedRaw = await readJsonFile(DASHBOARD_CACHE_FILE, null);
+  const cachedRaw = await readDashboardCache(DASHBOARD_CACHE_FILE);
   const cached = ensurePortfolioReturnFields(cachedRaw);
   if (cached) {
     const corrections = await readJsonFile(path.join(accountDir(), "portfolio-history-corrections.json"), []);
@@ -1523,7 +1374,7 @@ async function getDashboardData({ forceRefresh = false } = {}) {
     const runningRefresh = (async () => {
       const fresh = await buildDashboardData(cached);
       if (refreshRevision !== settingsRevision) throw new Error("Die Zugangsdaten wurden während der Aktualisierung geändert.");
-      await writeJsonFile(refreshFile, fresh);
+      await writeDashboardCache(refreshFile, fresh, cachedRaw?.loadedAt);
       return fresh;
     });
     dashboardRefreshPromise = runningRefresh();
@@ -2082,11 +1933,11 @@ function getAssetKey(trade) {
 
 const CRYPTO_SYMBOLS = new Set([
   "BTC", "ETH", "XRP", "DOGE", "ZEC", "ATOM", "QNT", "COREUM", "NAKA", "LEVER", "NIGHT", "PI", "EURCV", "BEST",
-  "BTC1S", "ETH1S", "DBR", "VSN",
+  "BTC1S", "ETH1S", "DBR", "VSN", "BC8",
   "ADA", "SOL", "DOT", "AVAX", "LINK", "MATIC", "POL", "LTC", "BCH", "TRX", "XLM", "VET", "NEAR", "UNI", "AAVE"
 ]);
 const ETF_SYMBOLS = new Set([
-  "S&P500", "SPYY", "MSCI-WORLD", "MSCI-EM", "ESGW", "IQQX", "ROBOTICS", "EURO-CLIMATE", "GLSCAP", "BC8"
+  "S&P500", "SPYY", "MSCI-WORLD", "MSCI-EM", "ESGW", "IQQX", "ROBOTICS", "EURO-CLIMATE", "GLSCAP"
 ]);
 const METAL_SYMBOLS = new Set(["XAU", "XAG", "XPT", "XPD", "PRECIOUS", "GOLDMINE", "VZLE"]);
 const STOCK_SYMBOLS = new Set([
@@ -2173,6 +2024,7 @@ function normalizeCategoryText(value) {
 
 function getAssetCategory(trade) {
   const a = trade.attributes || {};
+  if (a.catalogAsset?.category && a.catalogAsset.category !== "other") return a.catalogAsset.category;
   const symbol = getAssetName(trade);
   const categoryText = [
     a.asset_type,
@@ -2377,7 +2229,10 @@ function calculateRealizedProfit(trades, savingsTransactions = [], paidTax = { a
       assets.set(key, {
         assetKey: key,
         name,
-        displayName: ASSET_DISPLAY_NAMES[key] || name,
+        displayName: attributes.catalogAsset?.name || ASSET_DISPLAY_NAMES[key] || name,
+        assetId: attributes.catalogAsset?.id || null,
+        isin: attributes.catalogAsset?.isin || null,
+        metadataCategory: attributes.catalogAsset?.category !== "other" ? attributes.catalogAsset?.category || null : null,
         category,
         categoryLabel: ASSET_CATEGORY_LABELS[category] || ASSET_CATEGORY_LABELS.other,
         totalBoughtFiat: 0,
@@ -2433,7 +2288,8 @@ function calculateRealizedProfit(trades, savingsTransactions = [], paidTax = { a
       asset.unmatchedSoldQuantity = Number(asset.unmatchedSoldQuantity || 0) + unmatchedQuantity;
       const grossProfit = tradeValueBeforeFee - costOfSoldQuantity;
       const tradingFee = allocatedBuyFee + tradeFee;
-      const profitBeforeTax = grossProfit - tradingFee;
+      const financingFee = Number(attributes.financingFee || 0);
+      const profitBeforeTax = grossProfit - tradingFee - financingFee;
       const hasTaxData = paidTax.available && Object.hasOwn(paidTax.tradeTaxes, trade.id);
       // Kept as a compatibility field for existing views; it now contains only
       // booked tax after directly linked refunds, never a 27.5% estimate.
@@ -2441,6 +2297,7 @@ function calculateRealizedProfit(trades, savingsTransactions = [], paidTax = { a
       const taxSource = hasTaxData ? "bitpanda_bookings" : "unavailable";
       const profit = profitBeforeTax - estimatedTax;
 
+      asset.financingFees = Number(asset.financingFees || 0) + financingFee;
       asset.realizedProfit += profit;
       asset.grossRealizedProfit += grossProfit;
       asset.tradingFees += tradeFee;
@@ -2454,8 +2311,8 @@ function calculateRealizedProfit(trades, savingsTransactions = [], paidTax = { a
       const month = monthKeyFromItem(trade);
       const year = yearKeyFromItem(trade);
 
-      addProfitToPeriod(monthlyMap, month, grossProfit, tradingFee, 0, profitBeforeTax, fiat);
-      addProfitToPeriod(yearlyMap, year, grossProfit, tradingFee, 0, profitBeforeTax, fiat);
+      addProfitToPeriod(monthlyMap, month, grossProfit, tradingFee + financingFee, 0, profitBeforeTax, fiat);
+      addProfitToPeriod(yearlyMap, year, grossProfit, tradingFee + financingFee, 0, profitBeforeTax, fiat);
 
       asset.trades.push({
         id: trade.id,
@@ -2464,6 +2321,8 @@ function calculateRealizedProfit(trades, savingsTransactions = [], paidTax = { a
         fiat,
         tradeValueBeforeFee,
         grossRealizedProfit: grossProfit,
+        financingFee,
+        financingFeeBookings: attributes.financingFeeBookings || [],
         tradingFee: tradeFee,
         feeSource: reportedTradeFee(trade) != null ? (attributes.dashboardFeeSource || 'trades') : 'calculated',
         isSavings,
@@ -2487,7 +2346,8 @@ function calculateRealizedProfit(trades, savingsTransactions = [], paidTax = { a
         year,
         date: attributes.time?.date_iso8601 || null,
         grossRealizedProfit: grossProfit,
-        tradingFee,
+        financingFee,
+        tradingFee: tradingFee + financingFee,
         estimatedTax,
         taxSource,
         realizedProfit: profit
@@ -2594,19 +2454,20 @@ function summarizeProfitLossByCategory(assets = []) {
 function enrichAssetWithTickerMetadata(asset, tickerPrices) {
   const symbol = normalizeSymbol(asset.assetKey || asset.name);
   const ticker = tickerPrices.get(symbol);
-  const category = getTickerCategory(symbol, ticker);
-  const currentPrice = ticker ? Number(ticker.price || 0) : null;
+  const category = asset.metadataCategory || getTickerCategory(symbol, ticker);
+  const safeTicker = ticker && catalogCategory(ticker) === category ? ticker : null;
+  const currentPrice = safeTicker ? Number(safeTicker.price || 0) : null;
 
   return {
     ...asset,
-    displayName: getAssetDisplayName(symbol, ticker),
+    displayName: asset.metadataCategory ? asset.displayName : getAssetDisplayName(symbol, safeTicker),
     category,
     categoryLabel: ASSET_CATEGORY_LABELS[category] || ASSET_CATEGORY_LABELS.other,
-    tickerType: ticker?.type || null,
+    tickerType: safeTicker?.type || null,
     currentPrice,
-    priceChangeDay: ticker ? Number(ticker.price_change_day || 0) : null,
-    priceCurrency: ticker?.currency || null,
-    priceSource: ticker ? "Bitpanda Price Ticker" : null
+    priceChangeDay: safeTicker ? Number(safeTicker.price_change_day || 0) : null,
+    priceCurrency: safeTicker?.currency || null,
+    priceSource: safeTicker ? "Bitpanda Price Ticker" : null
   };
 }
 
@@ -2719,12 +2580,13 @@ async function fetchProfitLoss(savingsTransactions = [], { includeAccountInputs 
   let paidTax;
   let accountInputs;
   try {
-    const [operations, eurCurrencyId] = await Promise.all([
+    const [operations, eurCurrencyId, financingTransactions] = await Promise.all([
       fetchPublicPaginated("/operations", {}, Number.POSITIVE_INFINITY),
-      getPublicEurCurrencyId()
+      getPublicEurCurrencyId(),
+      fetchCryptoWalletTransactions().catch(() => [])
     ]);
     paidTax = calculatePaidTax(operations, { eurCurrencyId, trades });
-    trades = enrichTradesWithBookedFees(trades, operations, eurCurrencyId);
+    trades = enrichTradesWithLeverageFees(enrichTradesWithBookedFees(trades, operations, eurCurrencyId), operations, eurCurrencyId, financingTransactions);
     if (includeAccountInputs) {
       const results = await Promise.allSettled([
         loadPublicAssetCatalog(), publicApiRequest("/currencies"), publicApiRequest("/portfolio"),
@@ -2732,10 +2594,14 @@ async function fetchProfitLoss(savingsTransactions = [], { includeAccountInputs 
       ]);
       const value = (index, fallback) => results[index].status === 'fulfilled' ? results[index].value : fallback;
       accountInputs = { operations, eurCurrencyId, trades, assets: value(0, []), currencies: value(1, {}).data || [], portfolio: value(2, {}).data || [], fiatTransactions: value(3, []), portfolioError: results[2].status === 'rejected' ? 'Bitpanda-Portfolio konnte nicht geladen werden.' : null, metadataErrors: results.flatMap((r, i) => r.status === 'rejected' ? [`${['Assetnamen', 'Währungen', 'Portfolio', 'Fiat-Belege'][i]} konnten nicht geladen werden.`] : []) };
+    } else {
+      const catalog = await loadPublicAssetCatalog().catch(() => []);
+      trades = enrichTradeAssetIdentity(trades, operations, catalog);
     }
   } catch {
     paidTax = { available: false, error: "Bezahlte KESt konnte nicht vollständig aus den Bitpanda-Buchungen geladen werden." };
   }
+  if (accountInputs) trades = enrichTradeAssetIdentity(trades, accountInputs.operations, accountInputs.assets);
   const profitLoss = calculateRealizedProfit(trades, savingsTransactions, paidTax);
 
   try {
@@ -2958,11 +2824,12 @@ app.get("/market/history", async (req, res) => {
   const name = String(req.query.name || "").trim();
   const category = String(req.query.category || "other");
   if (!Object.hasOwn(HISTORY_RANGES, range) || !symbol || symbol.length > 40 || name.length > 160) return res.status(400).json({ error: "Ungültiges Symbol oder ungültiger Zeitraum." });
-  const key = `${symbol}:${name}:${category}:${range}:EUR`;
+  const source = req.query.source === "bitpanda" ? "bitpanda" : "market";
+  const key = `${source}:${symbol}:${name}:${category}:${range}:EUR`;
   const cached = chartHistoryCache.get(key);
   if (cached && Date.now() - cached.loadedAt < MARKET_CACHE_MS) return res.json(cached.value);
   try {
-    const value = await loadMarketHistory({ symbol, name, category, range });
+    const value = await (source === "bitpanda" ? loadBitpandaChart : loadMarketHistory)({ symbol, name, category, range });
     if (chartHistoryCache.size >= 100) chartHistoryCache.delete(chartHistoryCache.keys().next().value);
     chartHistoryCache.set(key, { loadedAt: Date.now(), value });
     res.json(value);
@@ -3120,30 +2987,6 @@ app.get("/open-positions", async (req, res) => {
   }
 });
 
-app.get("/manual-positions", async (req, res) => {
-  try {
-    res.json(await readManualPositions());
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post("/manual-positions", async (req, res) => {
-  try {
-    const manualPositions = await writeManualPositions(req.body || {});
-    const dashboard = await getDashboardData({ forceRefresh: true });
-
-    res.json({
-      manualPositions,
-      dashboard
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 app.get("/cashflow-overrides", async (req, res) => {
   try {
     res.json(await readCashflowOverrides());
@@ -3159,7 +3002,7 @@ app.put("/cashflow-overrides", async (req, res) => {
     res.json(await writeCashflowOverrides(req.body || {}));
   } catch (error) {
     console.error(error);
-    res.status(400).json({ error: error.message || "Cashflow-Korrekturen konnten nicht gespeichert werden." });
+    res.status(error.status || 400).json({ error: error.message || "Cashflow-Korrekturen konnten nicht gespeichert werden.", state: error.state });
   }
 });
 

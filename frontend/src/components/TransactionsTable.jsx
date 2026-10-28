@@ -1,3 +1,4 @@
+import AdaptiveTable from "./AdaptiveTable.jsx";
 import {
   amount,
   cashflowClass,
@@ -13,8 +14,19 @@ import { CASHFLOW_OPTIONS } from "./cashflowOverrides.js";
 
 export default function TransactionsTable({ transactions, overrides = {}, onChangeClassification }) {
   return (
-    <div className="table-card">
-      <table className="clean-table">
+    <div className="table-card cashflow-table-card">
+      <div className="mobile-transaction-list">
+        {transactions.map(transaction => <article className="mobile-transaction-card" key={transaction.id}>
+          <header><span>{cashflowLabel(transaction, overrides)}</span><strong className={transaction.attributes?.in_or_out === "incoming" ? "positive" : "negative"}>{formatCurrency(amount(transaction))}</strong></header>
+          <p>{formatDate(transaction)} · {paymentMethod(transaction)}</p>
+          {isSavingsTransaction(transaction) && <div className="transaction-details"><span className="pill pill-positive savings-badge">Sparplan</span></div>}
+          <details><summary>Details & Zuordnung</summary>
+            <p>Status: {transaction.attributes?.status || "–"} · Gebühr: {formatCurrency(fee(transaction))}</p>
+            <label>Zuordnung<select value={cashflowClass(transaction, overrides)} onChange={event => onChangeClassification?.(transaction.id, event.target.value)}>{CASHFLOW_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          </details>
+        </article>)}
+      </div>
+      <AdaptiveTable className="clean-table">
         <thead>
           <tr>
             <th>Datum</th>
@@ -58,10 +70,13 @@ export default function TransactionsTable({ transactions, overrides = {}, onChan
                 <td>{attributes.status || "-"}</td>
                 <td>{attributes.in_or_out || "-"}</td>
                 <td>
-                  <div>{paymentMethod(transaction)}</div>
-                  {isSavingsTransaction(transaction) && <div><span className="pill pill-positive">Sparplan</span></div>}
+                  <div className="transaction-details">
+                    <span className="transaction-payment-method">{paymentMethod(transaction)}</span>
+                    {isSavingsTransaction(transaction) && <span className="pill pill-positive savings-badge">Sparplan</span>}
+                  </div>
                 </td>
                 <td>
+                  <div className="cashflow-classification">
                   <select
                     className="cashflow-select"
                     value={classification}
@@ -70,16 +85,18 @@ export default function TransactionsTable({ transactions, overrides = {}, onChan
                   >
                     {CASHFLOW_OPTIONS.map(option => (
                       <option key={option.value} value={option.value}>
-                        {option.value === defaultClassification ? `${option.label} (automatisch)` : option.label}
+                        {option.value === "expense" ? "Ausgabe" : option.value === "transfer" ? "Transfer" : option.label}
                       </option>
                     ))}
                   </select>
+                  <small>{classification === defaultClassification ? "Automatisch zugeordnet" : "Manuell zugeordnet"}</small>
+                  </div>
                 </td>
               </tr>
             );
           })}
         </tbody>
-      </table>
+      </AdaptiveTable>
     </div>
   );
 }

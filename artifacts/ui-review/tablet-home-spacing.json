@@ -1,0 +1,58 @@
+[
+  {
+    "container": "app-content",
+    "before": "page-heading",
+    "after": "portfolio-home",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "portfolio-home",
+    "before": "hero-card portfolio-hero",
+    "after": "stats-grid portfolio-stats",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "portfolio-home",
+    "before": "stats-grid portfolio-stats",
+    "after": "portfolio-metric-help",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "portfolio-home",
+    "before": "portfolio-metric-help",
+    "after": "table-card snapshot-card portfolio-value-card",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "portfolio-home",
+    "before": "table-card snapshot-card portfolio-value-card",
+    "after": "table-card snapshot-card allocation-card",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "portfolio-home",
+    "before": "table-card snapshot-card allocation-card",
+    "after": "overview-grid",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "portfolio-home",
+    "before": "overview-grid",
+    "after": "table-card portfolio-positions-card portfolio-positions-target",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "portfolio-home",
+    "before": "table-card portfolio-positions-card portfolio-positions-target",
+    "after": "table-card portfolio-positions-card portfolio-watchlist-card",
+    "gap": 24,
+    "expected": 24
+  }
+]

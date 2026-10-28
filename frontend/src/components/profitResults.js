@@ -6,5 +6,5 @@ export function getProfitValue(asset, mode) {
 
 export function realizedTradingFees(asset) {
   return (asset.trades || []).filter(trade => trade.type === 'sell')
-    .reduce((sum, trade) => sum + Number(trade.tradingFee || 0) + Number(trade.allocatedBuyFee || 0), 0);
+    .reduce((sum, trade) => sum + Number(trade.tradingFee || 0) + Number(trade.allocatedBuyFee || 0) + Number(trade.financingFee || 0), 0);
 }

@@ -5,7 +5,7 @@ export default function useMarketHistoryRefresh() {
   const [refresh, setRefresh] = useState(() => Math.floor(Date.now() / 180_000));
   useEffect(() => {
     const update = () => {
-      if (document.visibilityState === "visible") setRefresh(Math.floor(Date.now() / 180_000));
+      setRefresh(Math.floor(Date.now() / 180_000));
     };
     const timer = window.setInterval(update, 30_000);
     document.addEventListener("visibilitychange", update);

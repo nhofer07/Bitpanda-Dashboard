@@ -1,0 +1,37 @@
+[
+  {
+    "container": "app-content",
+    "before": "page-heading",
+    "after": "fusion-view",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "fusion-view",
+    "before": "page-intro ",
+    "after": "fusion-summary",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "fusion-view",
+    "before": "fusion-summary",
+    "after": "fusion-market-grid",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "fusion-view",
+    "before": "fusion-market-grid",
+    "after": "fusion-trading-grid",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "fusion-view",
+    "before": "fusion-trading-grid",
+    "after": "table-card",
+    "gap": 24,
+    "expected": 24
+  }
+]

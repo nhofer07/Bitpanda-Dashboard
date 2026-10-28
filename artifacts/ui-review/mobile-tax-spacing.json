@@ -1,0 +1,30 @@
+[
+  {
+    "container": "app-content",
+    "before": "page-heading",
+    "after": "tax-view",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "tax-view",
+    "before": "page-intro ",
+    "after": "table-card tax-overview-card",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "tax-view",
+    "before": "table-card tax-overview-card",
+    "after": "table-card tax-bookings-card",
+    "gap": 20,
+    "expected": 20
+  },
+  {
+    "container": "tax-view",
+    "before": "table-card tax-bookings-card",
+    "after": "table-card",
+    "gap": 20,
+    "expected": 20
+  }
+]

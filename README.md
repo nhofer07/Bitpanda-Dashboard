@@ -37,14 +37,66 @@ Automatische Abrufe laufen still im Hintergrund: Der bisherige Stand bleibt sich
 und wird erst nach einem erfolgreichen Abruf durch die neuen Werte ersetzt. Sobald
 das Browserfenster oder der Dashboard-Tab wieder aktiv wird, lädt die Oberfläche
 zusätzlich sofort den jüngsten Backend-Stand; sie wartet dann nicht auf den nächsten
-Browser-Timer.
+Browser-Timer. Auch unsichtbare Tabs und Fenster auf anderen macOS-Schreibtischen
+führen die regelmäßigen Dashboard- und Chart-Abrufe weiter aus. Safari kann
+Hintergrund-Timer selbst drosseln; die serverseitige Minutenaufzeichnung bleibt
+davon unabhängig. Bei Fokus, Sichtbarkeit oder Wiederherstellung der Seite wird
+der aktuelle Stand sofort erneut angefordert.
 
-Der Portfolioverlauf im Cockpit zeichnet ab seinem Start den gesamten Bitpanda-Wert
-auf: Marktwert der offenen Positionen plus nicht investiertes Guthaben. Neue Werte
-werden minütlich erfasst und ältere Werte platzsparend verdichtet. War das Backend
-ausgeschaltet, bleibt die zeitliche Lücke erhalten und die datierten Messpunkte vor
-und nach der Pause werden gerade verbunden. Eine rückwirkende Rekonstruktion wäre
-wegen fehlender historischer Wallet- und Cash-Stände nicht zuverlässig.
+Der Portfolioverlauf im Cockpit verwendet bevorzugt Bitpandas eigene EUR-Portfoliohistorie
+(`GET /v1/portfolio-history`) für Tag, Woche, Monat, sechs Monate und Jahr. Die
+Original-Messpunkte bleiben erhalten; belegte Korrekturen werden in der Darstellung gekennzeichnet; der Tageszeitraum umfasst die
+letzten 24 Stunden. „Tatsächliche Werte anzeigen“ zeigt die damaligen Portfoliowerte.
+Die Standardansicht bereinigt die Kurve um die zugeordneten Zahlungsbewegungen.
+Ein-/Auszahlungen bleiben als anklickbare Markierungen und als aufklappbare Liste
+sichtbar und lassen sich separat ausblenden. Für die Bereinigung werden Buchungen
+dem zugehörigen Bitpanda-Zeitabschnitt zugeordnet, dessen Abschlusswert die Buchung
+bereits enthält; die genaue Buchungszeit bleibt in Marker und Liste erhalten.
+Bitpandas Prozent-Rendite wird als
+solche bezeichnet; das bereinigte Euro-Ergebnis folgt den Cashflow-Zuordnungen im
+Dashboard und kann von Bitpandas Berechnung abweichen.
+
+Unabhängige Kontostände werden auch bei funktionierender Bitpanda-Historie weiter
+aufgezeichnet (höchstens ein Punkt pro Minute, nach 48 Stunden auf Viertelstunden
+und nach 31 Tagen auf Tagespunkte verdichtet). Unter „Gespeichert“ bleibt diese
+Historie separat abrufbar.
+
+Monats- und 6-Monats-Historie werden an gemeinsamen Schlusszeitpunkten verglichen.
+Abweichungen über max(5 €, 0,3 %) werden ausgewiesen. Tageswerte widerlegen keine
+Spitzen innerhalb des Tages. Ein automatischer Ersatz benötigt zwei echte lokale
+Kontostände vor und nach dem Schlusszeitpunkt (maximal 15 Minuten entfernt), die
+untereinander innerhalb max(5 €, 0,3 %) liegen. Nur isolierte Abweichungen über
+max(25 €, 1 %) werden ersetzt; beide benachbarten API-Werte müssen zum lokalen
+Stand passen. Bei Zahlungsbewegungen, Datenlücken oder geschätzten lokalen Punkten
+erfolgt kein Ersatz. Korrekturen zeigen Originalbetrag, Ersatzbetrag und Herkunftszeit.
+Die originale Bitpanda-Prozentrendite wird bei korrigierter Kurve ausgeblendet;
+das Euro-Ergebnis nutzt die dargestellten Werte. Rohdaten werden nicht überschrieben.
+
+Die Verlaufsdatei wird vollständig in eine temporäre Datei geschrieben, auf den
+Datenträger synchronisiert und anschließend atomar ersetzt. Zusätzlich liegt bei
+jedem Speichervorgang eine vollständige zweite Kopie in
+`dashboard-data.json.recovery.json`. Tägliche Sicherungen des bisherigen Standes
+bleiben unter `dashboard-data.json.backups/YYYY-MM-DD.json` erhalten; sie werden
+nicht automatisch gelöscht und benötigen zusätzlichen Speicherplatz.
+Fehlt die Hauptdatei oder ist sie beschädigt, verwendet das Backend die zweite
+Kopie beziehungsweise die jüngste lesbare tägliche Sicherung. Sind vorhandene
+Kopien sämtlich unlesbar, bricht es ab, statt eine neue Historie darüberzuschreiben.
+Veraltete Aktualisierungen, leere Verläufe und ein nach vorne verschobenes
+Aufzeichnungsstartdatum werden beim Speichern zurückgewiesen. Bestehende
+Synology-Historien erhalten diese zusätzlichen Kopien beim nächsten erfolgreichen
+Speichervorgang nach dem Update. Die Kopien liegen auf demselben Datenträger;
+zusätzliche Sicherungen des Datenordners auf einem anderen Datenträger schützen
+gegen den Ausfall der NAS-Festplatten.
+
+Aktuelle Bestände, durchschnittliche Kaufpreise und investierte Beträge werden
+für alle von der Portfolio-API gemeldeten Assets direkt aus Bitpandas eigenen
+Kontodaten übernommen. Der Gesamtbestand enthält auch reservierte Anteile;
+Fusion-Guthaben wird nicht nochmals addiert. Meldet Bitpanda keinen Kaufpreis in
+EUR, bleibt der aus Trades rekonstruierte Preis ausdrücklich als solcher markiert.
+Manuelle Mengenüberschreibungen und der Reiter „Sonderfälle“ wurden entfernt;
+alte Korrekturdateien bleiben erhalten, beeinflussen neue Berechnungen aber nicht.
+Realisierte historische Verkaufsgewinne und Steuerbuchungen werden weiterhin aus
+den jeweiligen Transaktionen berechnet.
 
 ## Gebühren, Steuern und Kontodaten
 
@@ -77,7 +129,7 @@ Keys liegen in `~/.bitpanda-dashboard/credentials.json`, außerhalb des Projekto
 mit Dateirechten nur für den lokalen Benutzer. Sie sind dort nicht verschlüsselt;
 Personen mit Zugriff auf dieses Benutzerkonto können sie lesen. Der Browser erhält
 nur den Status „Hinterlegt“, niemals gespeicherte Keys.
-Depot-Caches und manuelle Positionen liegen ebenfalls außerhalb des Projekts. Auf
+Depot-Caches liegen ebenfalls außerhalb des Projekts. Auf
 der Synology nutzt jede getrennte Benutzerinstanz einen stabilen Datenbestand, damit
 ein API-Key-Wechsel den Portfoliochart nicht zurücksetzt. Bei lokaler Speicherung
 auf dem Mac bleiben Datenbestände weiterhin nach Bitpanda-Key getrennt.
@@ -112,6 +164,68 @@ npm start
 cd frontend
 npm run dev
 ```
+
+## Mobile Bedienung und Datenqualität
+
+Desktop und Handy verwenden dieselben vier Hauptbereiche: **Cockpit**,
+**Portfolio**, **Auswertungen** und **Markt & Handel**. Jeder Einstieg öffnet
+seine Standardansicht: Cockpit, Assets, Gewinne & Verluste beziehungsweise
+Marktanalyse. Die Unterseiten sind am Desktop über eine zweite Navigationszeile
+und am Handy über „Ansicht wechseln“ im Seitenkopf erreichbar. Der Zielrechner
+liegt unter Auswertungen, Fusion unter Markt & Handel. Einstellungen und Hilfe
+stehen im Kopfbereich. Auf dem Handy ist die Hauptnavigation unten fixiert.
+Assets, Gewinne und Cashflow-Buchungen verwenden mobile Karten. Alle Tabellen
+prüfen ihre tatsächliche Breite: Passt eine Zeile nicht vollständig, werden die
+wichtigsten Angaben mit aufklappbaren Details dargestellt. Das gilt auch am
+Laptop; seitliches Scrollen ist für die Tabellen nicht erforderlich.
+Browser-Zurück und direkte Seitenaufrufe über `#calendar`, `#assets` usw.
+werden unterstützt. „Assets“ öffnet oben; offene Positionen im Cockpit öffnen
+gezielt den zugehörigen Chart.
+
+Über „Zum Home-Bildschirm“ lässt sich das Dashboard mit eigenem Icon öffnen.
+Der eigenständige App-Modus hängt vom Browser und einer geeigneten HTTPS-Verbindung
+ab. Es werden keine Kontodaten für eine Offline-Nutzung zwischengespeichert.
+
+Der Portfoliochart startet mit bereinigten Werten. „Tatsächliche Werte anzeigen“
+wechselt Kurve, Skala und Extremwerte gemeinsam; die Auswahl bleibt gespeichert.
+Bei Zahlungsbewegungen im Zeitraum zeigt er das bereinigte Ergebnis in Euro,
+aber keine Prozent-Rendite: Messungen unmittelbar vor jeder Buchung fehlen.
+Ohne Zahlungsbewegungen wird die prozentuale Wertentwicklung angezeigt.
+„Ergebnis gegenüber Netto-Einzahlungen“ im Cockpit verwendet dagegen die
+Netto-Einzahlungen als Bezugsgröße und ist keine zeitgewichtete Rendite.
+
+Kennzeichnungen unterscheiden Bitpanda-Werte, Berechnungen, Schätzungen und
+veraltete Daten. Ein gemeinsamer Datenstatus meldet fehlgeschlagene Abrufe und
+mehr als drei Minuten alte Daten; vorhandene Werte bleiben bei Fehlern sichtbar.
+Veraltete Antworten überschreiben keinen neueren Dashboardstand.
+Cashflow-Korrekturen werden pro Buchung mit dem vorherigen Serverwert verglichen.
+Konflikte zwischen Geräten laden den Serverstand und verlangen eine neue Auswahl.
+Ausstehende Änderungen werden lokal gespeichert und später erneut synchronisiert;
+alte Browserwerte werden nicht automatisch zum Server zurückgeschrieben.
+
+Im Handel werden Kontodaten vor jeder Quote neu geladen. Gesamtbestand und
+verfügbarer Bestand stehen separat; fehlende verfügbare Beträge erscheinen als
+„Nicht verfügbar“. Quotes zeigen ihre Restlaufzeit und sind nach Ablauf oder bei
+unbekannter Gültigkeit gesperrt.
+
+Prüfungen:
+
+```bash
+node --test backend/test/*.test.js frontend/test/*.test.js
+cd frontend
+npx playwright install chromium
+npm run test:e2e
+```
+
+Die Browsertests verwenden ausschließlich Testdaten und führen keine echten
+Trades aus. Sie prüfen alle Ansichten am Desktop und Handy, zusätzlich Tablet
+und schmale Layoutgrenzen, Navigation, Chartansichten, Speicherung,
+Aktualisierungsfehler, Formularbedienung und abgelaufene Quotes. Screenshots der
+visuellen Prüfung liegen nach `npm run test:e2e` in `artifacts/ui-review/`.
+Die Prüfung läuft in Chromium; echte iOS-/Android-Geräte müssen bei Bedarf
+zusätzlich geprüft werden. Die Dateibestandteile `dashboard.css`, `auth.css`,
+`PageIntro`, `DataNote` und `formatters.js` bündeln gemeinsame Gestaltung,
+Einführungen, Erläuterungen und Zahlenformate.
 
 ## Assets & Suche
 

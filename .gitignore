@@ -24,3 +24,8 @@ cashflow-overrides.json
 .bitpanda-dashboard/
 data/
 data-*/
+
+playwright-report/
+test-results/
+
+/artifacts/ui-review/*.png

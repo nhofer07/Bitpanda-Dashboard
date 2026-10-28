@@ -1,0 +1,23 @@
+[
+  {
+    "container": "app-content",
+    "before": "page-heading",
+    "after": "period-overview",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "period-overview",
+    "before": "page-intro ",
+    "after": "view-panel compact-panel",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "period-overview",
+    "before": "view-panel compact-panel",
+    "after": "period-explorer",
+    "gap": 24,
+    "expected": 24
+  }
+]

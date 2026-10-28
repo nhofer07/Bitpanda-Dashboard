@@ -9,9 +9,21 @@ Open **Bitpanda Widget** to configure connections and log in to the dashboard. T
 
 A per-user LaunchAgent (`com.bitpanda.local.widget.refresh`) fetches fresh data at five-minute clock boundaries (:00, :05, :10, …, :55) through the approved app identity, without opening a window or appearing in the Dock. The app launches as a macOS agent; only opening its settings enables a Dock icon. Widgets read this shared snapshot, avoiding macOS local-network failures in the extension. The updater starts automatically at login. If a fetch fails, the saved data remains explicitly Offline; cached online status expires at the next five-minute boundary. The extension requests a fresh timeline at that same boundary, and successful background fetches also request a refresh. macOS decides the actual display refresh time; exact five-minute widget rendering is not guaranteed. The last portfolio update is shown on the widget. No continuously running dashboard browser or overlay is required.
 
-The additional **Bitpanda Tagesgewinn** widget shows today’s cashflow-adjusted gain or loss in EUR and percent, with a chart starting at zero. It is available in small and medium sizes through **Right-click desktop → Edit Widgets → Bitpanda → Bitpanda Tagesgewinn**, and reuses the existing connection and login. The original portfolio widget remains available.
+The additional **Bitpanda Tagesgewinn** widget shows gain/loss in EUR and percent,
+with a chart starting at zero. Both widgets use the same checked, cashflow-adjusted
+series as the dashboard: the official 24-hour history when current, or the saved
+Vienna-calendar-day history when it is unavailable. The period is shown explicitly.
+The current portfolio balance remains separate and is never appended to an official
+series. API bucket closing times determine cashflow assignment. Isolated errors are
+corrected only against corroborating saved observations; both widgets show a
+correction count and the last chart measurement time in their aligned footers.
+A single daily value alone cannot invalidate an intraday spike. Percentages follow
+the dashboard and are omitted when no reliable value is available.
 
-The widget shows total portfolio value including cash, today's cashflow-adjusted chart, and its change. It uses the Vienna calendar date and keeps outdated values explicitly labelled Offline. With no midnight baseline, the chart is labelled as starting from today's first recording.
+The gain widget is available in small and medium sizes through **Right-click desktop
+→ Edit Widgets → Bitpanda → Bitpanda Tagesgewinn**, and reuses the existing login.
+The server sends the prepared chart in `/api/widget/portfolio`; older server versions
+continue using the legacy daily calculation until the server update is deployed.
 
 Dashboard passwords are not stored. App and extension share connection settings, session cookies, and the last displayed portfolio data in a private app-group container. Both Synology addresses refer to the same dashboard; the widget can reuse the home session at the configured remote address. With the updated backend, session hashes are stored in the persistent Synology data volume and remain valid after container restarts and updates. Sessions expire after 30 days without use; active widget sessions renew automatically. Logout and credential changes revoke access. Existing sessions issued by the previous backend require one new login after deployment. Settings saves preserve the newest stored session, and home/remote routing tries either configured Synology session when one is stale. The username is remembered; the password remains unsaved.
 

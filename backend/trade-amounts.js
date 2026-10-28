@@ -9,6 +9,8 @@ export function reportedTradeFee(trade) {
 }
 
 export function tradeValueBeforeFee(trade, quantity, fiat, fee) {
+  const bookedGross = trade.attributes?.dashboardGrossTradeValue;
+  if (typeof bookedGross === 'number' && Number.isFinite(bookedGross) && bookedGross > 0) return bookedGross;
   const type = String(trade.attributes?.type || '').toLowerCase();
   // amount_fiat is the wallet debit/credit before tax, after trading fees.
   // Using a fee-inclusive execution price here would deduct the fee twice.

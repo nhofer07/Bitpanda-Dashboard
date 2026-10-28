@@ -1,0 +1,30 @@
+[
+  {
+    "container": "app-content",
+    "before": "page-heading",
+    "after": "market-analysis",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "market-analysis",
+    "before": "page-intro ",
+    "after": "data-note",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "market-analysis",
+    "before": "data-note",
+    "after": "table-card watchlist-card",
+    "gap": 24,
+    "expected": 24
+  },
+  {
+    "container": "market-analysis",
+    "before": "table-card watchlist-card",
+    "after": "analysis-layout",
+    "gap": 24,
+    "expected": 24
+  }
+]

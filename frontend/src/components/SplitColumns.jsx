@@ -31,7 +31,7 @@ function TransactionCard({ transaction, overrides = {} }) {
         Status: {attributes.status || "-"} · Richtung: {attributes.in_or_out || "-"} · {paymentMethod(transaction)}
       </div>
 
-      {isSavingsTransaction(transaction) && <div className="transaction-card__meta"><span className="pill pill-positive">Sparplan</span> Automatisch ausgeführte Bitpanda-Einzahlung</div>}
+      {isSavingsTransaction(transaction) && <div className="transaction-card__meta transaction-details"><span className="pill pill-positive savings-badge">Sparplan</span><span>Automatisch ausgeführte Bitpanda-Einzahlung</span></div>}
 
       {fee(transaction) > 0 && (
         <div className="transaction-card__meta">

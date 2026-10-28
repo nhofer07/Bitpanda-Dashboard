@@ -1,3 +1,4 @@
+import PageIntro from "./PageIntro.jsx";
 import { useEffect, useState } from "react";
 import { updateBrowserCredentials } from "./browserCredentials.js";
 
@@ -56,7 +57,7 @@ export default function SettingsView({ onSaved }) {
     } catch (err) { notify(err.message, "error", feedbackId); setBusy(false); }
   }
   return <div className="settings-view">
-    <section className="hero-card settings-hero"><div><div className="eyebrow">Einrichtung & Sicherheit</div><h2>Verbindungen verwalten</h2><p>Hier steuerst du, welche externen Daten dein persönliches Dashboard verwenden darf.</p></div><div className="settings-hero-status"><span className={status?.bitpandaConfigured ? "ready" : "missing"} /> <strong>{status?.bitpandaConfigured ? "Dashboard verbunden" : "Einrichtung offen"}</strong><small>Bitpanda API</small></div></section>
+    <PageIntro><div><p>Hier steuerst du, welche externen Daten dein persönliches Dashboard verwenden darf.</p></div><div className="hero-status"><span>Bitpanda API</span><strong className={status?.bitpandaConfigured ? "positive" : "muted"}>{status?.bitpandaConfigured ? "Verbunden" : "Einrichtung offen"}</strong></div></PageIntro>
     <form className="settings-form" onSubmit={save}>
       <div className="settings-connections">
       <section className="table-card settings-key-card">
