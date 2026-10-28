@@ -7,13 +7,21 @@ import Foundation
   precondition(result.value == 1150 && result.change == 50 && result.percent == 5)
   precondition(result.points.first!.value == 1100 && result.points.last!.value == 1150 && result.completeDay)
   var prepared=data
-  prepared["chart"]=["version":1,"periodLabel":"24 Stunden","lastPointAt":"2026-10-06T09:00:00Z","points":[["time":now.timeIntervalSince1970-7200,"value":1200.0],["time":now.timeIntervalSince1970-3600,"value":1250.0]],"change":50.0,"percent":NSNull(),"corrections":[["originalValue":1500.0]]]
+  prepared["chart"]=["version":1,"periodLabel":"Heute","lastPointAt":"2026-10-06T09:00:00Z","points":[["time":now.timeIntervalSince1970-7200,"value":1200.0],["time":now.timeIntervalSince1970-3600,"value":1250.0]],"change":50.0,"percent":NSNull(),"corrections":[["originalValue":1500.0]]]
   let verified=try summarize(prepared,overrides:[:],now:now)
   precondition(verified.value == 1150 && verified.points.last!.value == 1250)
   precondition(verified.points.count == 2 && verified.change == 50 && verified.percent == nil)
-  precondition(verified.periodLabel == "24 Stunden" && verified.correctionCount == 1)
+  precondition(verified.periodLabel == "Heute" && verified.correctionCount == 1)
   let oldPrepared=try summarize(prepared,overrides:[:],now:now.addingTimeInterval(86400))
   precondition(oldPrepared.points.isEmpty)
+  var old24=prepared
+  var oldChart=old24["chart"] as! [String:Any]
+  oldChart["periodLabel"]="24 Stunden"
+  old24["chart"]=oldChart
+  let migrated=try summarize(old24,overrides:[:],now:now)
+  precondition(migrated.points.last!.value == 1150 && migrated.change == 50)
+  var oldCached=verified; oldCached.periodLabel="24 Stunden"; oldCached.fetchedAt=now
+  precondition(freshWidgetState(oldCached,now:now) == nil)
   let gains=dailyGainPoints(result)
   precondition(gains.first!.value == 0 && gains.last!.value == 50)
   precondition(gains.map(\.time) == result.points.map(\.time))

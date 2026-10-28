@@ -45,7 +45,7 @@ struct BitpandaDailyGainWidget: Widget {
                 .widgetURL(URL(string:"bitpandawidget://settings"))
         }
         .configurationDisplayName("Bitpanda Tagesgewinn")
-        .description("Dein Gewinn oder Verlust im angezeigten Zeitraum mit geprüftem, cashflow-bereinigtem Chart.")
+        .description("Dein heutiger Gewinn oder Verlust ab 00:00 Uhr in Wien, bereinigt um Zahlungsbewegungen.")
         .supportedFamilies([.systemSmall,.systemMedium])
     }
 }

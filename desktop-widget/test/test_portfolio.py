@@ -37,14 +37,14 @@ class PortfolioTests(unittest.TestCase):
 
     def test_prepared_chart_does_not_append_current_balance_or_reapply_cashflows(self):
         data=self.data()
-        data['chart']={'version':1,'periodLabel':'24 Stunden','points':[{'time':self.now().timestamp()-7200,'value':1200},{'time':self.now().timestamp()-3600,'value':1250}],'change':50,'percent':None,'corrections':[{'originalValue':1500}]}
+        data['chart']={'version':1,'periodLabel':'Heute','points':[{'time':self.now().timestamp()-7200,'value':1200},{'time':self.now().timestamp()-3600,'value':1250}],'change':50,'percent':None,'corrections':[{'originalValue':1500}]}
         result=summarize(data,now=self.now())
         self.assertEqual(result['points'][-1][1],1250)
         self.assertEqual(len(result['points']),2)
         self.assertEqual(result['change'],50)
         self.assertIsNone(result['percent'])
         self.assertEqual(result['correctionCount'],1)
-        self.assertEqual(result['periodLabel'],'24 Stunden')
+        self.assertEqual(result['periodLabel'],'Heute')
         self.assertEqual(summarize(data,now=self.now()+dt.timedelta(days=1))['points'],[])
 
 if __name__ == '__main__':

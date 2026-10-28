@@ -91,7 +91,7 @@ var viennaCalendar: Calendar {
 }
 func summarize(_ data:[String:Any], overrides:[String:String], now:Date = Date()) throws -> PortfolioState {
     guard let portfolio=data["portfolio"] as? [String:Any], let value=portfolio["totalValue"] as? Double, value.isFinite, let loaded=parseDate(data["loadedAt"]) else { throw URLError(.cannotParseResponse) }
-    if let chart=data["chart"] as? [String:Any], chart["version"] as? Int == 1 {
+    if let chart=data["chart"] as? [String:Any], chart["version"] as? Int == 1, chart["periodLabel"] as? String != "24 Stunden" {
         guard let rows=chart["points"] as? [[String:Any]] else { throw URLError(.cannotParseResponse) }
         var points:[ChartPoint]=[]
         for row in rows {
@@ -142,7 +142,8 @@ actor PortfolioClient {
         let config=URLSessionConfiguration.ephemeral; config.httpCookieAcceptPolicy = .never; config.httpShouldSetCookies=false; config.timeoutIntervalForResource=timeout
         let session=URLSession(configuration:config); defer{session.invalidateAndCancel()}
         let (body,response)=try await session.data(for:request)
-        guard let http=response as? HTTPURLResponse, (200..<300).contains(http.statusCode), http.url?.host == url.host else { throw URLError(.badServerResponse) }
+        guard let http=response as? HTTPURLResponse, http.url?.host == url.host else { throw URLError(.badServerResponse) }
+        guard (200..<300).contains(http.statusCode) else { throw NSError(domain:"BitpandaWidget",code:http.statusCode,userInfo:[NSLocalizedDescriptionKey:"\(path): HTTP \(http.statusCode)"]) }
         guard let json=try JSONSerialization.jsonObject(with:body) as? [String:Any] else { throw URLError(.cannotParseResponse) }
         return json
     }
@@ -159,7 +160,10 @@ actor PortfolioClient {
                     guard auth["required"] is Bool, auth["configured"] is Bool else { continue }
                     if auth["authenticated"] as? Bool == true { cookie=candidate; connected=true; break }
                 }
-                guard connected else { continue }
+                guard connected else {
+                    if CommandLine.arguments.contains("--refresh-widgets") { print("Widget \(name): Anmeldung erforderlich") }
+                    continue
+                }
                 let data:[String:Any]
                 let overrides:[String:String]
                 do {
@@ -174,9 +178,15 @@ actor PortfolioClient {
                 var result=try summarize(data,overrides:overrides); result.source=name; result.fetchedAt=Date()
                 SharedStore.save(result,name:"portfolio.json")
                 return result
-            } catch { continue }
+            } catch {
+                if CommandLine.arguments.contains("--refresh-widgets") { print("Widget \(name): \(error.localizedDescription)") }
+                continue
+            }
         }
         var result=SharedStore.load("portfolio.json",as:PortfolioState.self) ?? PortfolioState()
+        if result.periodLabel == "24 Stunden" {
+            result.points=[]; result.change=nil; result.percent=nil; result.periodLabel="Heute"; result.completeDay=false
+        }
         result.offline=true; result.notice="Dashboard nicht erreichbar oder Anmeldung erforderlich"
         if let loaded=result.loadedAt, !viennaCalendar.isDateInToday(loaded) { result.points=[]; result.change=nil; result.percent=nil }
         return result
@@ -196,6 +206,7 @@ func nextWidgetRefresh(after date:Date) -> Date {
 func freshWidgetState(_ saved:PortfolioState, now:Date=Date()) -> PortfolioState? {
     guard let fetched=saved.fetchedAt, now >= fetched, now < nextWidgetRefresh(after:fetched) else { return nil }
     var result=saved
+    if result.periodLabel == "24 Stunden" { return nil }
     if let loaded=result.loadedAt, !viennaCalendar.isDate(loaded,inSameDayAs:now) {
         result.points=[]; result.change=nil; result.percent=nil; result.completeDay=false
     }
@@ -279,7 +290,7 @@ struct DailyGainCard: View {
     var body: some View {
         VStack(alignment:.leading,spacing:4) {
             HStack(alignment:.firstTextBaseline) {
-                Text(state.periodLabel == "24 Stunden" ? "GEWINN · 24H" : "TAGESGEWINN").font(.system(size:10,weight:.bold)).tracking(0.7).foregroundStyle(tint).lineLimit(1).minimumScaleFactor(0.75)
+                Text("TAGESGEWINN").font(.system(size:10,weight:.bold)).tracking(0.7).foregroundStyle(tint).lineLimit(1).minimumScaleFactor(0.75)
                 Spacer()
                 Text(state.offline ? "Offline" : state.preview ? "Vorschau" : state.source).font(.system(size:8)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
             }

@@ -29,7 +29,7 @@ def summarize(data, overrides=None, now=None):
     if loaded is None or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise ValueError('Kein gültiger Portfoliowert')
     chart = data.get('chart')
-    if isinstance(chart, dict) and chart.get('version') == 1:
+    if isinstance(chart, dict) and chart.get('version') == 1 and chart.get('periodLabel') != '24 Stunden':
         points = chart.get('points')
         if not isinstance(points, list) or any(not isinstance(p, dict) or any(not isinstance(p.get(k), (int, float)) or not math.isfinite(p[k]) for k in ('time', 'value')) or p['time'] > now.timestamp() for p in points):
             raise ValueError('Ungültiger geprüfter Chart')

@@ -9,6 +9,7 @@ import WidgetKit
             SharedStore.save(state,name:"portfolio.json")
             WidgetCenter.shared.reloadAllTimelines()
             print(state.offline ? "Widgets: Offline" : "Widgets: Verbunden (\(state.source))")
+            print("Abruf: \(state.fetchedAt?.ISO8601Format() ?? "unbekannt") · Datenstand: \(state.loadedAt?.ISO8601Format() ?? "unbekannt") · \(state.points.count) Messpunkte · \(state.periodLabel ?? (state.completeDay ? "Heute" : "Teilzeitraum"))")
             exit(state.offline ? 1 : 0)
         }
         // Only an explicitly opened settings window should appear in the Dock.

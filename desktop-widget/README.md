@@ -11,12 +11,13 @@ A per-user LaunchAgent (`com.bitpanda.local.widget.refresh`) fetches fresh data 
 
 The additional **Bitpanda Tagesgewinn** widget shows gain/loss in EUR and percent,
 with a chart starting at zero. Both widgets use the same checked, cashflow-adjusted
-series as the dashboard: the official 24-hour history when current, or the saved
-Vienna-calendar-day history when it is unavailable. The period is shown explicitly.
-The current portfolio balance remains separate and is never appended to an official
-series. API bucket closing times determine cashflow assignment. Isolated errors are
-corrected only against corroborating saved observations; both widgets show a
-correction count and the last chart measurement time in their aligned footers.
+calendar-day series as the dashboard calendar: 00:00 until now in Europe/Vienna,
+resetting at the following midnight (including 23/25-hour DST days). It uses guarded
+saved account observations, not the rolling 24-hour API return. The period is shown explicitly.
+The current portfolio balance is the last observation of today. Both widgets share
+the calendar baseline, daily EUR result and percentage, and show the last chart
+measurement time in their aligned footers. Missing daily baselines are labelled
+as partial recordings. Local observations pass through the shared anomaly guard.
 A single daily value alone cannot invalidate an intraday spike. Percentages follow
 the dashboard and are omitted when no reliable value is available.
 
