@@ -52,3 +52,7 @@ Offizielle Referenzen:
 ## Trade- und Anlagehorizonte
 
 Auswahl von wenigen Tagen über 1–2 bzw. 2–4 Wochen bis zu Monaten und mehrjährigen Anlagen. Standard: 2–4 Wochen. Kurzfristige Analysen betrachten Momentum, Volatilität, Liquidität, Spread/Gebühren und bevorstehende Ereignisse sowie bedingte Ein- und Ausstiegsszenarien. Ohne ausreichende aktuelle Kursdaten darf die KI keine konkreten Kursmarken erfinden. Auch die kopierte Anfrage für Free-Nutzer berücksichtigt diesen Zeitraum.
+
+## Denkstufe
+
+Neben der Modellwahl kann die Denkstufe eingestellt werden. Angeboten werden die im aktuellen Konto-Modellkatalog ausgewiesenen, für Responses gültigen Stufen (z. B. low, medium, high, xhigh, max). „Modellstandard“ sendet keinen reasoning-Parameter und zeigt den vom Katalog gemeldeten Standard, sofern vorhanden. Fehlen Modellangaben, bleibt nur Modellstandard verfügbar. Beim Modellwechsel wird die Auswahl zurückgesetzt; der Server validiert die Stufe erneut vor jeder Analyse. Höhere Stufen können mehr Zeit und Abo-Kontingent benötigen.

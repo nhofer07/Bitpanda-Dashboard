@@ -36,11 +36,11 @@ async function setup(t, options = {}) {
       const jwt = await new SignJWT({ nonce: options.badNonce ? 'wrong' : auth.get('nonce'), email: 'person@example.test' }).setProtectedHeader({ alg: 'RS256', kid: 'test' }).setIssuer('https://auth.openai.com').setAudience('issued-client').setSubject('person').setIssuedAt().setExpirationTime('1h').sign(privateKey);
       return Response.json({ access_token: 'oauth-not-api-key', refresh_token: 'private-refresh', id_token: jwt, expires_in: options.expiring && tokenCount === 1 ? 1 : 3600, scope: options.identityOnly ? 'openid email' : 'openid chatgpt.tokens.use.direct' });
     }
-    if (address.endsWith('/models')) return Response.json({ models: [{ slug: 'available-model', display_name: 'Available', visibility: 'list' }, { slug: 'hidden', visibility: 'hide' }] });
+    if (address.endsWith('/models')) return Response.json({ models: [{ slug: 'available-model', display_name: 'Available', visibility: 'list', supported_reasoning_levels: [{ effort: 'low' }, { effort: 'high' }, { effort: 'ultra' }], default_reasoning_level: 'low' }, { slug: 'hidden', visibility: 'hide' }] });
     if (address.endsWith('/responses')) {
-      inferenceCount++; const body = JSON.parse(init.body);
+      inferenceCount++; const body = JSON.parse(init.body); if (body.reasoning) assert.equal(body.reasoning.effort, 'high');
       assert.equal(init.headers.Authorization, 'Bearer oauth-not-api-key'); assert.equal(body.store, false); assert.equal(body.stream, true);
-      assert.deepEqual(Object.keys(body).sort(), ['model', 'instructions', 'input', 'store', 'stream'].sort());
+      assert.deepEqual(Object.keys(body).sort(), ['model', 'instructions', 'input', 'store', 'stream', ...(body.reasoning ? ['reasoning'] : [])].sort());
       if (options.quota) return Response.json({}, { status: 429 });
       const events = [{ type: 'response.output_text.delta', delta: 'Abwarten: Daten fehlen.' }, { type: 'response.completed' }];
       return new Response(new ReadableStream({ start(c) { for (const e of events) c.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`)); c.close(); } }));
@@ -60,7 +60,7 @@ async function setup(t, options = {}) {
 test('OAuth verifies PKCE and signed identity, discovers models and stores protected credentials', async t => {
   const { ai, login, directory } = await setup(t);
   assert.equal((await login()).status, 200); assert.equal(ai.status().eligible, true);
-  assert.deepEqual(await ai.models(), [{ id: 'available-model', name: 'Available' }]);
+  assert.deepEqual(await ai.models(), [{ id: 'available-model', name: 'Available', reasoningEfforts: ['low', 'high'], defaultReasoningEffort: 'low' }]);
   assert.equal((await ai.analyze('available-model', 'Public facts')).text, 'Abwarten: Daten fehlen.');
   await assert.rejects(ai.analyze('unknown', 'Public facts'));
   assert.equal(JSON.stringify(ai.status()).includes('private-refresh'), false);
@@ -106,4 +106,11 @@ test('short trades request entry, exit and invalidation without invented price l
   const short = analysisPrompt({}, '2–4 Wochen', 'Mittel');
   assert.match(short, /kurzfristigen Trade/); assert.match(short, /Ausstiegsszenario/); assert.match(short, /Spread und Gebühren/); assert.match(short, /nur, wenn ausreichend aktuelle Kursdaten/);
   assert.doesNotMatch(analysisPrompt({}, 'Über 5 Jahre', 'Mittel'), /Bewerte ausdrücklich einen kurzfristigen Trade/);
+});
+
+test('explicit effort is sent while unsupported efforts never start inference', async t => {
+  const s = await setup(t); await s.login();
+  const result = await s.ai.analyze('available-model', 'facts', 'high'); assert.equal(result.reasoningEffort, 'high');
+  await assert.rejects(s.ai.analyze('available-model', 'facts', 'max'), /nicht unterstützt/);
+  assert.equal(s.counts().inferenceCount, 1);
 });

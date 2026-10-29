@@ -19,7 +19,7 @@ test('explicit analysis sends only identity and preferences; safely renders mode
   await page.route('**/api/chatgpt/**', async route => {
     const url = route.request().url();
     let json = { eligible: true, connected: true, accounts: [] };
-    if (url.endsWith('/models')) json = { models: [{ id: 'test-model', name: 'Testmodell' }] };
+    if (url.endsWith('/models')) json = { models: [{ id: 'test-model', name: 'Testmodell', reasoningEfforts: ['low', 'medium', 'high'], defaultReasoningEffort: 'medium' }] };
     if (url.endsWith('/analysis')) { received = route.request().postDataJSON(); json = { text: '## Einschätzung\nAbwarten. Daten fehlen.\n\n[Quelle](https://example.org)\n<script>alert(1)</script>', model: 'Testmodell', updatedAt: '2026-10-29T12:00:00Z' }; }
     await route.fulfill({ json });
   });
@@ -28,10 +28,13 @@ test('explicit analysis sends only identity and preferences; safely renders mode
   expect(received).toBeUndefined();
   await expect(panel.getByLabel('Trade- / Anlagehorizont')).toHaveValue('2–4 Wochen');
   await panel.getByLabel('Trade- / Anlagehorizont').selectOption('1–2 Wochen');
+  await expect(panel.getByLabel('Denkstufe')).toHaveValue('default');
+  await panel.getByLabel('Denkstufe').selectOption('high');
   await panel.getByRole('button', { name: 'Mit ChatGPT analysieren' }).click();
   await expect(panel.getByRole('heading', { name: 'Einschätzung' })).toBeVisible();
   expect(received.horizon).toBe('1–2 Wochen');
-  expect(Object.keys(received).sort()).toEqual(['category', 'horizon', 'model', 'name', 'question', 'risk', 'symbol'].sort());
+  expect(received.reasoningEffort).toBe('high');
+  expect(Object.keys(received).sort()).toEqual(['category', 'horizon', 'model', 'name', 'question', 'reasoningEffort', 'risk', 'symbol'].sort());
   await expect(panel.locator('.ai-result script')).toHaveCount(0);
   await expect(panel.getByRole('link', { name: 'Quelle' })).toHaveAttribute('rel', 'noreferrer');
   await panel.screenshot({ path: '../artifacts/ui-review/chatgpt-analysis.png' });

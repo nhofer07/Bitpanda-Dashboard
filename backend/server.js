@@ -333,7 +333,7 @@ app.post("/chatgpt/select", aiRoute(async (req, res) => { await chatgpt.select(r
 app.post("/chatgpt/disconnect", aiRoute(async (req, res) => res.json(await chatgpt.disconnect())));
 app.get("/chatgpt/models", aiRoute(async (req, res) => res.json({ models: await chatgpt.models() })));
 app.post("/chatgpt/analysis", aiRoute(async (req, res) => {
-  const { symbol, category, name, horizon, risk, question = "", model } = req.body || {};
+  const { symbol, category, name, horizon, risk, question = "", model, reasoningEffort = "default" } = req.body || {};
   if (typeof symbol !== "string" || symbol.length > 60 || !symbol.trim() || typeof name !== "string" || name.length > 160 || !["stock", "etf", "crypto", "metal", "other"].includes(category) || !ANALYSIS_HORIZONS.includes(horizon) || !["Niedrig", "Mittel", "Hoch"].includes(risk) || typeof question !== "string" || question.length > 2000) return res.status(400).json({ error: "Bitte gültige Analysevorgaben auswählen." });
   if (!chatgpt.status().eligible) return res.status(403).json({ error: "Bitte zuerst in den Einstellungen ein berechtigtes ChatGPT-Konto verbinden." });
   const [asset, news, analyst] = await Promise.all([
@@ -343,7 +343,7 @@ app.post("/chatgpt/analysis", aiRoute(async (req, res) => {
   ]);
   // Explicit allowlist: never send holdings, transactions, balances or credentials.
   const context = { asset: { symbol, name, category, price: asset.price, currency: asset.currency, source: asset.source, updatedAt: asset.updatedAt, sourceUpdatedAt: asset.sourceUpdatedAt, changePercent: asset.changePercent, history: asset.history?.map(p => ({ date: p.date, close: p.close })) }, analyst: alignAnalystCurrency(analyst, asset), news: news.map(n => ({ title: n.title, url: n.url || n.link, publishedAt: n.publishedAt, source: n.source })), retrievedAt: new Date().toISOString() };
-  res.json(await chatgpt.analyze(model, analysisPrompt(context, horizon, risk, question)));
+  res.json(await chatgpt.analyze(model, analysisPrompt(context, horizon, risk, question), reasoningEffort));
 }));
 app.use((req, res, next) => {
   if (savingSettings) return res.status(503).json({ error: "Einstellungen werden gespeichert." });
