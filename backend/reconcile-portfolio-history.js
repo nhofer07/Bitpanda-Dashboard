@@ -53,3 +53,20 @@ export function comparePortfolioHistory(points = [], comparisonPoints = []) {
   }
   return { compared, discrepancies };
 }
+
+// Prefer a finer, completed source observation at the exact same bucket close.
+// Preserve coarse timestamps/cadence so cashflows retain their original buckets.
+export function preferFinerPortfolioHistory(points = [], finerPoints = [], coverageEndAt) {
+  const intervalOf = series => { const gaps = series.slice(1).map((p,i) => p.time-series[i].time).filter(n=>n>0).sort((a,b)=>a-b); return gaps[Math.floor(gaps.length/2)]; };
+  const coarseInterval = intervalOf(points), fineInterval = intervalOf(finerPoints), coverage = Date.parse(coverageEndAt);
+  if (!(fineInterval > 0 && coarseInterval > fineInterval) || !Number.isFinite(coverage)) return { points, references: [] };
+  const byClose = new Map(finerPoints.slice(0,-1).filter((p,i) => finerPoints[i+1].time-p.time === fineInterval && p.time+fineInterval <= coverage && Number.isFinite(p.value) && p.value>=0).map(p => [p.time+fineInterval,p]));
+  const references = [];
+  const result = points.map((point,index) => {
+    if (!points[index+1] || points[index+1].time-point.time !== coarseInterval) return point;
+    const closeTime = point.time+coarseInterval, other=byClose.get(closeTime); if (!other) return point;
+    const reference={ originalValue:point.value, referenceValue:other.value, referenceTime:other.time, closeTime };
+    references.push({time:point.time,...reference}); return {...point,value:other.value,resolutionReference:reference};
+  });
+  return {points:result,references};
+}

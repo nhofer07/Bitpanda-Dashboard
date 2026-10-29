@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { reconcilePortfolioHistory, comparePortfolioHistory } from '../src/components/reconcilePortfolioHistory.js';
+import { reconcilePortfolioHistory, comparePortfolioHistory, preferFinerPortfolioHistory } from '../src/components/reconcilePortfolioHistory.js';
 const start = Date.parse('2026-10-21T00:00:00Z'), hour = 3600_000;
 const points = [3309.36, 3521.21, 3319.81, 3304.28].map((value, i) => ({time: start + i * 6 * hour, value}));
 const local = [{time: start + 12 * hour - 60_000, value: 3315}, {time: start + 12 * hour + 60_000, value: 3316}];
@@ -41,4 +41,13 @@ test('cross-range comparison aligns closes rather than start labels and cannot r
 });
 test('unavailable or missing comparison intervals never produce false disagreements', () => {
   assert.deepEqual(comparePortfolioHistory(points,[]),{compared:0,discrepancies:[]});
+});
+
+test('year chart uses finer observations at identical completed closes without changing coarse cadence or originals', () => {
+ const coarse=[{time:start,value:4700},{time:start+2*hour,value:3400},{time:start+4*hour,value:3410}];
+ const fine=[{time:start,value:3350},{time:start+hour,value:3360},{time:start+2*hour,value:3390},{time:start+3*hour,value:3405},{time:start+4*hour,value:3410}];
+ const r=preferFinerPortfolioHistory(coarse,fine,new Date(start+4*hour).toISOString());
+ assert.equal(r.points[0].value,3360);assert.equal(r.points[0].time,start);assert.equal(r.points[1].value,3405);assert.equal(coarse[0].value,4700);assert.equal(r.references.length,2);
+ const pending=preferFinerPortfolioHistory(coarse,fine,new Date(start+hour).toISOString());assert.equal(pending.references.length,0);
+ assert.deepEqual(preferFinerPortfolioHistory(coarse,coarse,end).points,coarse);
 });

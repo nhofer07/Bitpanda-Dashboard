@@ -36,7 +36,7 @@ export default function TradingViewChart({ pair }) {
   }
   return <div className="fusion-tradingview">
     <p className="source-note">TradingView-Referenzmarkt: <strong>{symbol}</strong>. Diese Kurse können von Fusion abweichen. Orderbuch und Orderformular handeln weiterhin <strong>{pair}</strong> über Fusion.</p>
-    <p className="source-note">Dauerhaft gespeicherte Zeichnungen erstellst du im Reiter „Zeichnungen · gespeichert“. Zeichnungen in diesem TradingView-Widget werden nicht vom Dashboard gesichert.</p>
+    <p className="source-note">Das Dashboard sichert keine internen Zeichnungen dieses TradingView-Widgets. Beim Neuladen können sie verloren gehen.</p>
     <form className="tradingview-symbol-form" onSubmit={change}><label>TradingView-Symbol<input aria-label="TradingView-Symbol" value={input} onChange={e => setInput(e.target.value)} spellCheck={false} /></label><button className="secondary-button" type="submit">Referenzmarkt anzeigen</button></form>
     {error && <p role="alert">{error}</p>}
     <div ref={stage} className={`tradingview-stage ${windowMode ? 'is-window-fullscreen' : ''}`}><div className="tradingview-stage-toolbar"><span>{symbol}</span><button className="secondary-button" type="button" aria-pressed={expanded} onClick={toggleFullscreen}>{expanded ? 'Vollbild verlassen' : 'Vollbild'}</button></div><iframe key={symbol} title={`TradingView-Chart ${symbol}`} src={source} sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads" referrerPolicy="no-referrer" allowFullScreen /></div>

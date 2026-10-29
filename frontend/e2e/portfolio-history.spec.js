@@ -130,6 +130,14 @@ for (const width of [390, 1440]) test(`period switches never flash saved snapsho
     if(range==='1m') await page.screenshot({path:`../artifacts/ui-review/chart-period-loading-${width}.png`,fullPage:true});
     const requests=pending.get(range);pending.set(range,[]);
     for(const request of requests) await request.fulfill({json:history(range)}).catch(()=>{});
+    if (range === '1y') {
+      await expect.poll(() => pending.get('6m')?.length || 0).toBeGreaterThan(0);
+      // Keep the unverified year curve hidden until its finer reference arrives.
+      await expect(chart.locator('.portfolio-chart-pending')).toBeVisible();
+      await expect(chart.locator('polyline')).toHaveCount(0);
+      const references = pending.get('6m'); pending.set('6m', []);
+      for (const request of references) await request.fulfill({json:history('6m')}).catch(()=>{});
+    }
     await expect(chart.locator('polyline')).toBeVisible();
     await expect(chart.locator('.chart-context .data-quality')).toHaveText('Bitpanda');
   }
