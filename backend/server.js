@@ -1,3 +1,4 @@
+import { createChatGPT, analysisPrompt } from "./chatgpt.js";
 import { sendCompressedJson } from "./compressed-json.js";
 import { createHistoryReadCache } from "./history-read-cache.js";
 import { createAccountAssetCatalog } from "./account-asset-catalog.js";
@@ -322,6 +323,27 @@ app.put("/settings", async (req, res) => {
   } catch { res.status(500).json({ error: "Die Zugangsdaten konnten nicht gespeichert werden." }); }
   finally { savingSettings = false; }
 });
+const chatgpt = await createChatGPT({ directory: DATA_DIR, callbackPort: Number(process.env.CHATGPT_CALLBACK_PORT || 1455), callbackHost: process.env.CHATGPT_CALLBACK_HOST || "127.0.0.1" });
+const aiRoute = handler => async (req, res) => { try { await handler(req, res); } catch (error) { res.status(400).json({ error: error.message || "ChatGPT-Anfrage fehlgeschlagen." }); } };
+app.get("/chatgpt/status", (req, res) => res.json(chatgpt.status()));
+app.post("/chatgpt/connect", aiRoute(async (req, res) => res.json(await chatgpt.start(req.body?.account))));
+app.post("/chatgpt/cancel", (req, res) => { chatgpt.cancel(); res.json({ ok: true }); });
+app.post("/chatgpt/select", aiRoute(async (req, res) => { await chatgpt.select(req.body?.account); res.json(chatgpt.status()); }));
+app.post("/chatgpt/disconnect", aiRoute(async (req, res) => res.json(await chatgpt.disconnect())));
+app.get("/chatgpt/models", aiRoute(async (req, res) => res.json({ models: await chatgpt.models() })));
+app.post("/chatgpt/analysis", aiRoute(async (req, res) => {
+  const { symbol, category, name, horizon, risk, question = "", model } = req.body || {};
+  if (typeof symbol !== "string" || symbol.length > 60 || !symbol.trim() || typeof name !== "string" || name.length > 160 || !["stock", "etf", "crypto", "metal", "other"].includes(category) || !["1 Jahr", "3–5 Jahre", "Über 5 Jahre"].includes(horizon) || !["Niedrig", "Mittel", "Hoch"].includes(risk) || typeof question !== "string" || question.length > 2000) return res.status(400).json({ error: "Bitte gültige Analysevorgaben auswählen." });
+  if (!chatgpt.status().eligible) return res.status(403).json({ error: "Bitte zuerst in den Einstellungen ein berechtigtes ChatGPT-Konto verbinden." });
+  const [asset, news, analyst] = await Promise.all([
+    fetchWatchlistQuote({ symbol: normalizeSymbol(symbol), category, name }),
+    fetchMarketNews(`${name} ${symbol}`, 8).catch(() => []),
+    fetchAnalystConsensus(normalizeSymbol(symbol), category).catch(() => ({ available: false }))
+  ]);
+  // Explicit allowlist: never send holdings, transactions, balances or credentials.
+  const context = { asset: { symbol, name, category, price: asset.price, currency: asset.currency, source: asset.source, updatedAt: asset.updatedAt, sourceUpdatedAt: asset.sourceUpdatedAt, changePercent: asset.changePercent, history: asset.history?.map(p => ({ date: p.date, close: p.close })) }, analyst: alignAnalystCurrency(analyst, asset), news: news.map(n => ({ title: n.title, url: n.url || n.link, publishedAt: n.publishedAt, source: n.source })), retrievedAt: new Date().toISOString() };
+  res.json(await chatgpt.analyze(model, analysisPrompt(context, horizon, risk, question)));
+}));
 app.use((req, res, next) => {
   if (savingSettings) return res.status(503).json({ error: "Einstellungen werden gespeichert." });
   if (!apiKey && !req.path.startsWith("/market/")) return res.status(401).json({ error: "Bitte zuerst den Bitpanda API-Key in den Einstellungen hinterlegen." });

@@ -15,6 +15,7 @@ files += [p for p in (root / 'frontend/e2e').rglob('*.js')]
 files += [p for p in (root / 'frontend/public').rglob('*') if p.is_file()]
 files += [p for p in (root / 'frontend/test').rglob('*.test.js')]
 files += [root / name for name in [
+    'backend/chatgpt.js', 'backend/test/chatgpt.test.js', 'docs/chatgpt.md',
     'backend/test/dashboard-loading.test.js',
     'backend/history-read-cache.js', 'backend/test/history-read-cache.test.js',
     'backend/compressed-json.js', 'backend/test/compressed-json.test.js',

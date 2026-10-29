@@ -18,6 +18,8 @@ export async function mockApp(page, overrides = {}) {
     let data = {}; let status = 200;
     if (!['GET', 'HEAD'].includes(route.request().method()) && !['/api/cashflow-overrides', '/api/trading/quotes'].includes(path)) { state.accepted++; throw new Error(`Unexpected mutation blocked: ${path}`); }
     if (path === '/api/auth/status') data = { required: false };
+    else if (path === '/api/dashboard-events') return route.fulfill({ status: 200, contentType: 'text/event-stream', body: ': fixture\n\n' });
+    else if (path === '/api/chatgpt/status') data = { connected: false, eligible: false, accounts: [] };
     else if (path === '/api/settings') data = { bitpandaConfigured: true, finnhubConfigured: true, fusionConfigured: true };
     else if (path === '/api/dashboard-data') { data = state.failDashboard ? { error: 'Test: Verbindung unterbrochen' } : state.dashboard; status = state.failDashboard ? 503 : 200; }
     else if (path === '/api/transactions') data = state.dashboard.transactions;

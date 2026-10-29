@@ -306,3 +306,7 @@ Die klassische Auswertung nutzt während der Übergangszeit weiterhin die bisher
 Bitpanda-Endpunkte. Der neue Bereich arbeitet unabhängig davon bereits mit
 Portfolio, Operations, Assets, Währungen, Quotes, Earn und Trading-Limits der neuen
 API.
+
+### ChatGPT-Analyse
+
+In den Einstellungen lässt sich ein berechtigtes ChatGPT-Konto verbinden. Assets und Marktanalyse bieten anschließend eine KI-Einschätzung mit Modellwahl, Anlagehorizont und Risikoneigung. Es gibt keinen kostenpflichtigen API-Ersatz. Einrichtung, Credit-Einstellungen und Synology-Anmeldetunnel: [ChatGPT-Anleitung](docs/chatgpt.md).

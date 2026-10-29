@@ -29,3 +29,6 @@ playwright-report/
 test-results/
 
 /artifacts/ui-review/*.png
+
+chatgpt-auth.json
+chatgpt-auth.json.tmp-*

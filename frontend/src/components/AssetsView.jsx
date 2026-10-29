@@ -1,3 +1,4 @@
+import { AIAnalysis } from "./ChatGPT.jsx";
 import SectionShortcuts from "./SectionShortcuts.jsx";
 import AdaptiveTable from "./AdaptiveTable.jsx";
 import { formatPrice, formatCurrency as money, formatDateTime } from "./formatters.js";
@@ -107,6 +108,7 @@ function AssetMarketPanel({ data, onSelectAsset, asset, held, position, watched,
     <div className="table-card asset-search-section"><div className="section-heading"><div><span className="eyebrow">{held ? "Im Portfolio" : position ? "Abgeschlossene Position" : "Marktdaten · Nicht im Portfolio"}</span><h3>{asset.name}</h3><p>{asset.symbol} · {categoryLabel(asset.category)}{asset.isin ? ` · ISIN ${asset.isin}` : ""}</p></div><div className="asset-market-summary"><span>Aktueller Kurs</span><h3>{accountQuote ? formatPrice(accountQuote.price) : quoteError ? "Nicht verfügbar" : "Lädt …"}</h3><button className="secondary-button" onClick={() => watched ? onRemoveWatch(asset.symbol) : onAddWatch(asset)}>{watched ? "Von Watchlist entfernen" : "Zur Watchlist hinzufügen"}</button></div></div>{accountQuote && <p className="source-note">{accountQuote.source} · Abruf: {formatDateTime(accountQuote.updatedAt)}</p>}{quoteError && <p role="status">{quoteError}</p>}</div>
     <SectionShortcuts label={`Bereiche für ${asset.name}`} items={[{ id: 'asset-market-chart', label: 'Kursverlauf' }, ...(position ? [{ id: 'asset-position', label: 'Deine Position' }] : []), { id: 'asset-trading', label: 'Kaufen & verkaufen' }]} />
     <div id="asset-market-chart" tabIndex={-1} aria-label={`Kurschart ${asset.name}`}><MarketHistoryChart asset={{ ...asset, chartSource: "bitpanda" }} trades={position?.trades || []} /></div>
+    <AIAnalysis key={`${asset.symbol}:${asset.category}`} asset={asset} />
     <div id="asset-trading" tabIndex={-1}><AssetActionsPanel asset={asset} held={held} currentPrice={accountQuote?.price ?? asset.price ?? held?.currentPrice} onTradeCompleted={onTradeCompleted} /></div>
     {position ? <div id="asset-position" tabIndex={-1}><AssetDetailView asset={position} embedded>{comparison}</AssetDetailView></div> : comparison}
   </section>;

@@ -605,3 +605,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 
 /* Reserve chart space while the selected official period loads. */
 .portfolio-chart-pending { min-height: 360px; display: grid; place-items: center; }
+
+.chatgpt-card{margin-top:24px}.ai-analysis{padding:24px;margin:20px 0}.ai-controls{display:flex;gap:16px;flex-wrap:wrap;margin:18px 0}.ai-controls label{display:grid;gap:8px;flex:1;min-width:150px}.ai-controls select,.chatgpt-card select,.ai-analysis textarea{font:inherit;color:inherit;background:var(--surface,#fff);border:1px solid #cbd5e1;border-radius:10px;padding:10px;max-width:100%}.ai-result{margin-top:20px;line-height:1.65}.ai-result>div{overflow-wrap:anywhere}.chatgpt-card code{display:block;overflow-wrap:anywhere;padding:12px}.ai-analysis .settings-actions,.chatgpt-card .settings-actions{flex-wrap:wrap}
+
+.ai-analysis .settings-field{margin-bottom:18px}.ai-analysis,.chatgpt-card{scroll-margin-top:110px}.ai-result a,.chatgpt-card a{color:var(--accent,#29bd94)}.ai-result :is(h1,h2,h3){font-size:18px;margin-top:24px}.ai-result p{margin:12px 0}

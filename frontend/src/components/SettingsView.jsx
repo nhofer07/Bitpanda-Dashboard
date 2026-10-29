@@ -1,3 +1,4 @@
+import { ChatGPTSettings } from "./ChatGPT.jsx";
 import PageIntro from "./PageIntro.jsx";
 import { useEffect, useState } from "react";
 import { updateBrowserCredentials } from "./browserCredentials.js";
@@ -80,5 +81,6 @@ export default function SettingsView({ onSaved }) {
       {error && <div className="error-box" role="alert">{error}</div>}
       <div className="settings-actions"><button className="primary-button" type="submit" disabled={busy || !status}>{busy ? "Speichert …" : "Änderungen speichern"}</button>{status?.authRequired && <button type="button" className="settings-logout" onClick={logout}>Abmelden</button>}</div>
     </form>
+    <ChatGPTSettings />
   </div>;
 }
