@@ -36,7 +36,7 @@ for (const width of [360, 390, 430]) test(`mobile shell and navigation fit ${wid
   await page.locator('.mobile-transaction-card').first().getByLabel('Zuordnung').selectOption('refund');
   await expect(page.getByText('Cashflow-Zuordnung gespeichert.', { exact: true })).toBeVisible();
   await tabs.getByRole('button', { name: 'Portfolio', exact: true }).click();
-  await expect(page.locator('.mobile-asset-table:visible')).toBeVisible();
+  await expect(page.locator('.asset-entry-list:visible')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const tabBox = await tabs.boundingBox();
   expect(Math.round(tabBox.y + tabBox.height)).toBe(844);
@@ -121,6 +121,13 @@ for (const width of [390, 1440]) test(`Assets opens at the top and only explicit
   await page.reload();
   await expect(page.locator('.assets-view')).toBeVisible();
   await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+  const entries = page.locator('.asset-entry-list');
+  await expect(page.getByRole('button', { name: 'Chart & Details anzeigen', exact: true })).toHaveCount(0);
+  await entries.screenshot({ path: `../artifacts/ui-review/asset-entries-${width}.png` });
+  const entry = entries.getByRole('button', { name: 'Chart für Bitcoin öffnen', exact: true });
+  if (width < 760) await entry.locator('.asset-entry-value').click();
+  else { await entry.focus(); await entry.press('Enter'); }
+  await expect.poll(() => page.evaluate(() => document.activeElement?.id)).toBe('asset-market-chart');
 });
 
 test('cockpit positions stay compact and reveal details independently', async ({ page }) => {
