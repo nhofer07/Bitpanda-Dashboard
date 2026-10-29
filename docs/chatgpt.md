@@ -59,4 +59,4 @@ Neben der Modellwahl kann die Denkstufe eingestellt werden. Angeboten werden die
 
 ## Kompakte Ausgabe
 
-Analysen werden als kurzes Fazit mit fünf Stichpunkten (Dafür, Risiko, Einstieg, Ausstieg, Datenlage) und maximal zwei Quellen angefordert, insgesamt höchstens 120 Wörter. Das gilt auch für kopierte ChatGPT-Anfragen. Die Wortgrenze ist eine Modellanweisung; Antworten werden nicht nachträglich abgeschnitten, damit Risiken und fehlende Daten erhalten bleiben.
+Analysen werden als kurzes Fazit mit fünf Stichpunkten (Dafür, Risiko, Einstieg, Ausstieg, Datenlage) und maximal zwei Quellen angefordert, insgesamt etwa 200–250 Wörter, bei dünner Datenlage kürzer. Das gilt auch für kopierte ChatGPT-Anfragen. Die Längenvorgabe ist eine Modellanweisung; Antworten werden nicht nachträglich abgeschnitten, damit Risiken und fehlende Daten erhalten bleiben.

@@ -7,11 +7,11 @@ export function horizonGuidance(horizon) {
   return 'Bewerte eine längerfristige Anlage: Geschäftsmodell, Bewertung, Fundamentaldaten und langfristige Chancen und Risiken, soweit aktuelle Daten vorliegen.';
 }
 
-export const ANALYSIS_OUTPUT_FORMAT = `Antworte kompakt mit höchstens 120 Wörtern insgesamt. Keine Einleitung, langen Absätze, Tabellen oder wiederholten Hinweise. Halte genau dieses Format ein:
+export const ANALYSIS_OUTPUT_FORMAT = `Antworte übersichtlich mit etwa 200–250 Wörtern, bei dünner Datenlage entsprechend kürzer. Keine ausschweifende Einleitung, langen Absätze, Tabellen oder wiederholten Hinweise. Halte genau dieses Format ein:
 **Fazit: Eher interessant / Abwarten / Eher unattraktiv / Daten unzureichend** – eine kurze Begründung, bezogen auf den gewählten Zeitraum.
-- **Dafür:** stärkstes belegtes Argument.
-- **Risiko:** wichtigstes Gegenargument.
-- **Einstieg:** klare Bedingung; keine erfundenen Kursmarken.
-- **Ausstieg:** Gewinnmitnahme oder Bedingung, bei der die Idee ungültig wird.
-- **Datenlage:** wichtigste fehlende Information und Datenstand, sehr kurz.
-Zum Schluss höchstens zwei tatsächlich gelieferte Quellen als kurze Links. Beantworte eine Zusatzfrage innerhalb dieser Punkte. Formuliere jede Zeile in höchstens zwei kurzen Sätzen. Keine garantierten Gewinne oder Sicherheit vortäuschen.`;
+- **Dafür:** die ein bis zwei wichtigsten belegten Argumente und warum sie für diesen Zeitraum relevant sind.
+- **Risiko:** die ein bis zwei wichtigsten Gegenargumente und ihre mögliche Auswirkung auf den Trade.
+- **Einstieg:** klare Bedingung und kurze Begründung; keine erfundenen Kursmarken.
+- **Ausstieg:** nachvollziehbares Szenario für Gewinnmitnahme und eine Bedingung, bei der die Idee ungültig wird.
+- **Datenlage:** wichtigste fehlende Informationen und Datenstand; erkläre knapp, wie diese die Aussagekraft begrenzen.
+Zum Schluss höchstens zwei tatsächlich gelieferte Quellen als kurze Links. Beantworte eine Zusatzfrage innerhalb dieser Punkte. Formuliere jeden Punkt in zwei bis drei kurzen Sätzen; liefere konkrete Begründungen statt Fülltext. Keine garantierten Gewinne oder Sicherheit vortäuschen.`;
