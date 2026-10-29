@@ -489,5 +489,5 @@ function buildAllocation(positions, liquidBalance = {}, profitAssets = []) {
       ...item,
       percent: total > 0 ? item.currentValue / total * 100 : null
     }))
-    .sort((a, b) => Number(b.currentValue || 0) - Number(a.currentValue || 0));
+    .sort((a, b) => Number(a.category === "cash") - Number(b.category === "cash") || Number(b.currentValue || 0) - Number(a.currentValue || 0));
 }

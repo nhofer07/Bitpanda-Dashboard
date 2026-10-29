@@ -1,3 +1,4 @@
+import { createDashboardEvents } from "./dashboard-events.js";
 import { PORTFOLIO_TIMEFRAMES, normalizePortfolioHistory, createPortfolioHistoryLoader } from "./portfolio-api-history.js";
 import { catalogCategory, enrichTradeAssetIdentity } from "./asset-identity.js";
 import { createCashflowStore } from "./cashflow-store.js";
@@ -276,6 +277,11 @@ const MARKET_UNIVERSE = [
 let savingSettings = false;
 let dashboardRefreshPromise = null;
 let settingsRevision = 0;
+const dashboardEvents = createDashboardEvents();
+app.get("/dashboard-events", (req, res) => {
+  const revision = settingsRevision;
+  dashboardEvents.attach(req, res, () => revision === settingsRevision && authenticated(req));
+});
 function settingsStatus() { return { bitpandaConfigured: Boolean(apiKey), finnhubConfigured: Boolean(finnhubApiKey), fusionConfigured: Boolean(fusionApiKey), credentialsStorage: PERSIST_CREDENTIALS ? "disk" : "memory", authRequired: AUTH_REQUIRED }; }
 app.get("/settings", (req, res) => res.json(settingsStatus()));
 app.put("/settings", async (req, res) => {
@@ -293,6 +299,7 @@ app.put("/settings", async (req, res) => {
     }
     apiKey = next.bitpanda; finnhubApiKey = next.finnhub; fusionApiKey = next.fusion;
     settingsRevision += 1;
+    dashboardEvents.clear();
     portfolioHistoryLoader.clear();
     dashboardRefreshPromise = null;
     CACHE_DIR = path.join(accountDir(), ".cache");
@@ -1375,6 +1382,7 @@ async function getDashboardData({ forceRefresh = false } = {}) {
       const fresh = await buildDashboardData(cached);
       if (refreshRevision !== settingsRevision) throw new Error("Die Zugangsdaten wurden während der Aktualisierung geändert.");
       await writeDashboardCache(refreshFile, fresh, cachedRaw?.loadedAt);
+      if (refreshRevision === settingsRevision) dashboardEvents.publish(fresh.loadedAt);
       return fresh;
     });
     dashboardRefreshPromise = runningRefresh();
@@ -3086,7 +3094,9 @@ function scheduleBackgroundRefresh() {
   backgroundRefreshTimeout = setTimeout(() => {
     scheduleBackgroundRefresh();
     if (!apiKey || savingSettings || dashboardRefreshPromise) return;
+    dashboardEvents.refreshing();
     getDashboardData({ forceRefresh: true }).catch(error => {
+      dashboardEvents.failed();
       console.error(`Automatische Aktualisierung fehlgeschlagen: ${error.message}`);
     });
   }, delay);

@@ -15,6 +15,7 @@ files += [p for p in (root / 'frontend/e2e').rglob('*.js')]
 files += [p for p in (root / 'frontend/public').rglob('*') if p.is_file()]
 files += [p for p in (root / 'frontend/test').rglob('*.test.js')]
 files += [root / name for name in [
+    'backend/dashboard-events.js', 'backend/test/dashboard-events.test.js',
     'backend/performance-calendar.js',
     'backend/cashflow-classification.js', 'backend/chart-cashflows.js', 'backend/portfolio-history-cashflows.js',
     'backend/reconcile-portfolio-history.js', 'backend/portfolio-chart-points.js',

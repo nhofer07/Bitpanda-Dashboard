@@ -4,8 +4,16 @@ import { formatDateTime } from './formatters.js';
 
 export default function DataFreshness({ loadedAt, error, onRefresh, refreshing, preview = false }) {
   const [now, setNow] = useState(Date.now);
-  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(timer); }, []);
-  const status = dashboardFreshness(loadedAt, now, Boolean(error) || preview);
+  useEffect(() => {
+    const update = () => setNow(Date.now());
+    const timer = setInterval(update, 10_000);
+    document.addEventListener('visibilitychange', update);
+    window.addEventListener('focus', update);
+    window.addEventListener('pageshow', update);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', update); window.removeEventListener('focus', update); window.removeEventListener('pageshow', update); };
+  }, []);
+  const status = dashboardFreshness(loadedAt, Math.max(now, Date.now()), Boolean(error) || preview);
+  if (refreshing && !preview) status.label = 'Aktualisiere …';
   if (preview) status.label = 'Gespeicherte Vorschau';
   if (!loadedAt && !error) return null;
   return <div className={`data-freshness ${status.stale ? 'is-stale' : ''}`}>

@@ -48,3 +48,58 @@ test('hidden dashboard loads and refreshes balances, portfolio and market charts
   await expect(page.locator('.data-freshness')).toContainText('Daten aktuell');
   expect(requests.dashboard.at(-1)).toContain('refresh=1');
 });
+
+test('server notifications update a hidden dashboard while page timers are paused', async ({page}) => {
+  await page.addInitScript(()=>{
+    window.testVisibility='hidden';
+    Object.defineProperty(document,'visibilityState',{configurable:true,get:()=>window.testVisibility});
+    window.testStreams=[];
+    window.EventSource=class extends EventTarget {
+      constructor(url){super();this.url=url;window.testStreams.push(this);}
+      close(){this.closed=true;}
+    };
+  });
+  const state=await mockApp(page);
+  await page.goto('/');
+  await expect(page.locator('.portfolio-balance h2')).toContainText('4.150,00');
+  await expect.poll(()=>page.evaluate(()=>window.testStreams.filter(s=>!s.closed).length)).toBe(1);
+  await page.evaluate(()=>window.testStreams.filter(s=>!s.closed).forEach(s=>s.dispatchEvent(new MessageEvent('refreshing',{data:'{}'}))));
+  await expect(page.locator('.data-freshness')).toContainText('Aktualisiere …');
+  // No clock advancement and no focus/visibility event: only the stream wakes it.
+  state.dashboard={...state.dashboard,portfolio:{...state.dashboard.portfolio,totalValue:5000}};
+  await page.evaluate(()=>window.testStreams.filter(s=>!s.closed).forEach(s=>s.dispatchEvent(new MessageEvent('dashboard',{data:'{}'}))));
+  await expect(page.locator('.portfolio-balance h2')).toContainText('5.000,00');
+  expect(await page.evaluate(()=>document.visibilityState)).toBe('hidden');
+  // Reopening a stream catches up even if an event was missed during suspension.
+  state.dashboard={...state.dashboard,portfolio:{...state.dashboard.portfolio,totalValue:5100}};
+  await page.evaluate(()=>window.testStreams.filter(s=>!s.closed).forEach(s=>s.dispatchEvent(new MessageEvent('ready',{data:'{}'}))));
+  await expect(page.locator('.portfolio-balance h2')).toContainText('5.100,00');
+});
+
+test('the freshness indicator immediately marks a two-minute-old timestamp stale on return',async ({page})=>{
+  const state=await mockApp(page);await page.goto('/');
+  await expect(page.locator('.data-freshness')).toContainText('Daten aktuell');
+  await page.route('**/api/dashboard-data*',route=>route.fulfill({json:state.dashboard}));
+  await page.clock.fastForward(120_000);
+  await page.evaluate(()=>{document.dispatchEvent(new Event('visibilitychange'));window.dispatchEvent(new Event('focus'));});
+  await expect(page.locator('.data-freshness')).toContainText('Veralteter Datenstand');
+  await expect(page.locator('.data-freshness')).toHaveClass(/is-stale/);
+});
+
+test('automatic refresh starts at the next full minute and does not relabel old data while waiting',async ({page})=>{
+  await mockApp(page);await page.goto('/');
+  await expect(page.locator('.data-freshness')).toContainText('Daten aktuell');
+  await page.clock.pauseAt(new Date('2026-10-26T12:00:10Z'));
+  const pending=[];
+  await page.route('**/api/dashboard-data*',route=>{pending.push(route);});
+  await page.clock.runFor(49_999);
+  expect(pending.length).toBe(0);
+  await page.clock.runFor(1);
+  await expect.poll(()=>pending.length).toBe(1);
+  await expect(page.locator('.data-freshness')).toContainText('Aktualisiere …');
+  await expect(page.locator('.data-freshness time')).toHaveAttribute('datetime',at(12));
+  const {dashboard}=await import('./fixtures.js');
+  await pending[0].fulfill({json:{...dashboard,loadedAt:'2026-10-26T12:01:00Z'}});
+  await expect(page.locator('.data-freshness time')).toHaveAttribute('datetime','2026-10-26T12:01:00Z');
+  await expect(page.locator('.data-freshness')).toContainText('Daten aktuell');
+});

@@ -16,3 +16,10 @@ test('failed refresh, stale timestamps and missing dates never claim fresh data'
   assert.equal(dashboardFreshness('2026-10-26T11:55:00Z', now).stale, true);
   assert.equal(dashboardFreshness(null, now).stale, true);
 });
+
+test('a missed minute never remains labelled current for two minutes', () => {
+  const loadedAt='2026-10-29T09:35:00Z';
+  assert.equal(dashboardFreshness(loadedAt,Date.parse('2026-10-29T09:36:00Z')).stale,false);
+  assert.equal(dashboardFreshness(loadedAt,Date.parse('2026-10-29T09:36:01Z')).stale,true);
+  assert.equal(dashboardFreshness(loadedAt,Date.parse('2026-10-29T09:37:00Z')).label,'Veralteter Datenstand');
+});

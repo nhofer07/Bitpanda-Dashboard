@@ -37,7 +37,10 @@ Automatische Abrufe laufen still im Hintergrund: Der bisherige Stand bleibt sich
 und wird erst nach einem erfolgreichen Abruf durch die neuen Werte ersetzt. Sobald
 das Browserfenster oder der Dashboard-Tab wieder aktiv wird, lädt die Oberfläche
 zusätzlich sofort den jüngsten Backend-Stand; sie wartet dann nicht auf den nächsten
-Browser-Timer. Auch unsichtbare Tabs und Fenster auf anderen macOS-Schreibtischen
+Browser-Timer. Neue gespeicherte Daten werden angemeldeten Seiten zusätzlich per
+Server-Ereignis gemeldet und sofort nachgeladen. Die Verbindung wird bei Abmeldung
+oder Kontowechsel geschlossen; bei Verbindungsunterbrechung bleibt die Minutenabfrage
+als Rückfall erhalten. „Daten aktuell“ gilt höchstens 60 Sekunden nach dem Datenstand. Auch unsichtbare Tabs und Fenster auf anderen macOS-Schreibtischen
 führen die regelmäßigen Dashboard- und Chart-Abrufe weiter aus. Safari kann
 Hintergrund-Timer selbst drosseln; die serverseitige Minutenaufzeichnung bleibt
 davon unabhängig. Bei Fokus, Sichtbarkeit oder Wiederherstellung der Seite wird

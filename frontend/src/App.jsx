@@ -1,3 +1,4 @@
+import { subscribeDashboardUpdates } from "./components/dashboardEvents.js";
 import PageIntro from "./components/PageIntro.jsx";
 import { viewTitle, navigationGroup, VIEW_IDS } from "./components/navigationItems.js";
 import DataFreshness from "./components/DataFreshness.jsx";
@@ -129,6 +130,12 @@ export default function App() {
       }, delay);
     };
     scheduleMinuteRefresh();
+    const stopUpdates = subscribeDashboardUpdates(() => {
+      if (configured.current) loadDashboardData({ silent: true });
+    }, {
+      onRefreshing: () => { if (configured.current) setRefreshing(true); },
+      onFailed: () => { if (configured.current) { setRefreshing(false); setRefreshError("Automatische Aktualisierung fehlgeschlagen."); } }
+    });
 
     const loadLatestWhenVisible = () => {
       if (configured.current && document.visibilityState === "visible") {
@@ -142,6 +149,7 @@ export default function App() {
 
     return () => {
       window.clearTimeout(refreshTimeout);
+      stopUpdates();
       document.removeEventListener("visibilitychange", loadLatestWhenVisible);
       window.removeEventListener("focus", loadLatestWhenVisible);
       window.removeEventListener("pageshow", loadLatestWhenVisible);
@@ -201,11 +209,8 @@ export default function App() {
   async function loadDashboardData({ refresh = false, silent = false, force = false, feedback = true } = {}) {
     const token = latestRequest.current.begin();
     try {
-      if (refresh) {
-        setRefreshing(true);
-      } else if (!silent) {
-        setDashboardLoading(true);
-      }
+      setRefreshing(true);
+      if (!refresh && !silent) setDashboardLoading(true);
 
       const response = await fetch(`/api/dashboard-data${refresh || force ? "?refresh=1" : ""}`);
       const data = await response.json();

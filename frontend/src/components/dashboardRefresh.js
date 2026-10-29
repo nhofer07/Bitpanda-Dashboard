@@ -19,7 +19,7 @@ export function dashboardFreshness(loadedAt, now, failed = false) {
   const time = Date.parse(loadedAt);
   if (!Number.isFinite(time)) return { stale: true, label: 'Datenstand unbekannt' };
   if (failed) return { stale: true, label: 'Aktualisierung fehlgeschlagen' };
-  return now - time > 180_000
+  return now - time > 60_000
     ? { stale: true, label: 'Veralteter Datenstand' }
     : { stale: false, label: 'Daten aktuell' };
 }

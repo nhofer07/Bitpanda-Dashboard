@@ -157,3 +157,14 @@ for (const width of [390, 1440]) test(`section shortcuts preserve route and move
   await expect(page.locator('#profit-assets')).toBeFocused();
   await expect(page).toHaveURL(/#profits$/);
 });
+
+for(const width of [390,1440]) test(`cash stays last in every allocation view even when it dominates (${width}px)`,async ({page})=>{
+  await page.setViewportSize({width,height:1000});
+  const state=await mockApp(page);
+  state.dashboard.portfolio.liquidBalance={totalValue:90000,fiatValue:90000,cashPlusValue:0};
+  await page.goto('/');
+  const allocation=page.locator('.allocation-card');
+  await expect(allocation.locator('.allocation-table tbody tr').last()).toContainText('Cash');
+  await expect(allocation.locator('.allocation-mobile-card').last()).toContainText('Cash');
+  await expect(allocation.locator('.allocation-legend').locator('button, div').last()).toContainText('Cash');
+});
