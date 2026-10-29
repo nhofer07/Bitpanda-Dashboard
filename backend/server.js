@@ -1,3 +1,6 @@
+import { sendCompressedJson } from "./compressed-json.js";
+import { createHistoryReadCache } from "./history-read-cache.js";
+import { createAccountAssetCatalog } from "./account-asset-catalog.js";
 import { createReadDeduplicator } from "./read-deduplication.js";
 import { createDashboardEvents } from "./dashboard-events.js";
 import { PORTFOLIO_TIMEFRAMES, normalizePortfolioHistory, createPortfolioHistoryLoader } from "./portfolio-api-history.js";
@@ -306,6 +309,8 @@ app.put("/settings", async (req, res) => {
     }
     apiKey = next.bitpanda; finnhubApiKey = next.finnhub; fusionApiKey = next.fusion;
     settingsRevision += 1;
+    accountAssetCatalog.clear();
+    historyReadCache.clear();
     dashboardEvents.clear();
     portfolioHistoryLoader.clear();
     dashboardRefreshPromise = null;
@@ -336,6 +341,7 @@ function uniqueById(items) {
 }
 
 const sharedRead = createReadDeduplicator();
+const historyReadCache = createHistoryReadCache();
 function fetchPaginated(endpoint, params = {}) {
   const key = JSON.stringify([settingsRevision, 'legacy', endpoint, Object.entries(params).sort()]);
   return sharedRead(key, () => fetchPaginatedUnshared(endpoint, params));
@@ -345,6 +351,8 @@ async function fetchPaginatedUnshared(endpoint, params = {}) {
   let cursor = "";
   const allItems = [];
   const seenCursors = new Set();
+  const historyKey = params.status !== 'pending' ? JSON.stringify([settingsRevision, endpoint, Object.entries(params).sort()]) : null;
+  let firstSignature;
 
   while (true) {
     const url = new URL(`${BASE_URL}${endpoint}`);
@@ -375,6 +383,11 @@ async function fetchPaginatedUnshared(endpoint, params = {}) {
 
     const data = await response.json();
     const items = data.data || [];
+    if (cursor === "" && historyKey) {
+      const check = historyReadCache.inspect(historyKey, data);
+      if (check.hit) return check.value;
+      firstSignature = check.signature;
+    }
 
     allItems.push(...items);
 
@@ -392,7 +405,9 @@ async function fetchPaginatedUnshared(endpoint, params = {}) {
     seenCursors.add(cursor);
   }
 
-  return uniqueById(allItems);
+  const value = uniqueById(allItems);
+  if (historyKey) historyReadCache.store(historyKey, firstSignature, value);
+  return value;
 }
 
 function publicApiRequest(endpoint, options = {}) {
@@ -440,7 +455,14 @@ function fusionPair(value) {
 }
 
 async function fetchPublicPaginated(endpoint, params = {}, maxItems = 500) {
-  return fetchPublicPages(publicApiRequest, endpoint, params, maxItems);
+  if (endpoint !== "/operations" || maxItems !== Number.POSITIVE_INFINITY) return fetchPublicPages(publicApiRequest, endpoint, params, maxItems);
+  const key = JSON.stringify([settingsRevision, 'public', endpoint, Object.entries(params).sort()]);
+  const firstPage = await publicApiRequest(endpoint, { params: { ...params, page_size: 100, cursor: "" } });
+  const check = historyReadCache.inspect(key, firstPage);
+  if (check.hit) return check.value;
+  const value = await fetchPublicPages(publicApiRequest, endpoint, params, maxItems, { firstPage });
+  historyReadCache.store(key, check.signature, value);
+  return value;
 }
 
 async function getPublicEurCurrencyId() {
@@ -451,6 +473,13 @@ async function getPublicEurCurrencyId() {
   publicEurCurrencyCache = euro.id;
   return euro.id;
 }
+
+const accountAssetCatalog = createAccountAssetCatalog(async id => {
+  const payload = await publicApiRequest("/assets", { params: { id } });
+  const rows = payload?.data;
+  if (!Array.isArray(rows) || rows.some(row => row.id !== id)) throw new Error("Bitpanda liefert unpassende Asset-Stammdaten.");
+  return rows[0] || null;
+});
 
 async function loadPublicAssetCatalog() {
   if (publicAssetCatalogCache && Date.now() - publicAssetCatalogCache.loadedAt < 60 * 60 * 1000) return publicAssetCatalogCache.items;
@@ -1306,6 +1335,7 @@ async function buildDashboardData(previousCache = null) {
   if (accountInsights.portfolioAvailable) {
     openPositions = applyReportedPortfolio(openPositions, accountInsights.portfolio, profitLoss.assets).map(ensureAssetMetadata);
     reconciliation.source = "Bitpanda Portfolio API";
+    if (accountInsights.portfolio.some(row => row.balance > 0 && !row.assetKey)) balanceError ||= "Asset-Stammdaten fehlen für einen aktuellen Bestand; Bewertung ist unvollständig.";
   } else {
     balanceError ||= "Aktueller Bitpanda-Portfolio-Bestand konnte nicht geladen werden.";
   }
@@ -1352,6 +1382,7 @@ async function buildDashboardData(previousCache = null) {
   const dashboardData = {
     calculationVersion: DASHBOARD_CALCULATION_VERSION,
     loadedAt,
+    historyFullyReadAt: historyReadCache.oldestFullReadAt(),
     portfolioHistoryStartedAt: previousCache?.portfolioHistoryStartedAt || loadedAt,
     cacheMaxAgeMs: DASHBOARD_CACHE_MS,
     transactions,
@@ -2610,9 +2641,9 @@ async function fetchProfitLoss(savingsTransactions = [], { includeAccountInputs 
     fetchPublicPaginated("/operations", {}, Number.POSITIVE_INFINITY), getPublicEurCurrencyId(), (financingRequest || fetchCryptoWalletTransactions()).catch(() => [])
   ]);
   const metadataRequest = includeAccountInputs ? Promise.allSettled([
-    loadPublicAssetCatalog(), publicApiRequest("/currencies"), publicApiRequest("/portfolio"),
+    publicApiRequest("/currencies"), publicApiRequest("/portfolio"),
     fetchPaginated("/fiatwallets/transactions", { status: "finished" })
-  ]) : loadPublicAssetCatalog().catch(() => []);
+  ]) : null;
   const [buys, sells] = await Promise.all([
     fetchPaginated("/trades", { type: "buy" }),
     fetchPaginated("/trades", { type: "sell" })
@@ -2630,9 +2661,11 @@ async function fetchProfitLoss(savingsTransactions = [], { includeAccountInputs 
     if (includeAccountInputs) {
       const results = await metadataRequest;
       const value = (index, fallback) => results[index].status === 'fulfilled' ? results[index].value : fallback;
-      accountInputs = { operations, eurCurrencyId, trades, assets: value(0, []), currencies: value(1, {}).data || [], portfolio: value(2, {}).data || [], fiatTransactions: value(3, []), portfolioError: results[2].status === 'rejected' ? 'Bitpanda-Portfolio konnte nicht geladen werden.' : null, metadataErrors: results.flatMap((r, i) => r.status === 'rejected' ? [`${['Assetnamen', 'Währungen', 'Portfolio', 'Fiat-Belege'][i]} konnten nicht geladen werden.`] : []) };
+      const portfolio = value(1, {}).data || [];
+      const assetResult = await Promise.allSettled([accountAssetCatalog.load(operations, portfolio, trades)]);
+      accountInputs = { operations, eurCurrencyId, trades, assets: assetResult[0].status === 'fulfilled' ? assetResult[0].value : [], currencies: value(0, {}).data || [], portfolio, fiatTransactions: value(2, []), portfolioError: results[1].status === 'rejected' ? 'Bitpanda-Portfolio konnte nicht geladen werden.' : null, metadataErrors: [...(assetResult[0].status === 'rejected' ? ['Assetnamen konnten nicht geladen werden.'] : []), ...results.flatMap((r, i) => r.status === 'rejected' ? [`${['Währungen', 'Portfolio', 'Fiat-Belege'][i]} konnten nicht geladen werden.`] : [])] };
     } else {
-      const catalog = await metadataRequest;
+      const catalog = await accountAssetCatalog.load(operations, [], trades).catch(() => []);
       trades = enrichTradeAssetIdentity(trades, operations, catalog);
     }
   } catch {
@@ -3060,14 +3093,14 @@ app.get("/widget/portfolio", async (req, res) => {
 app.get("/dashboard-data", async (req, res) => {
   try {
     const dashboard = await getDashboardData({ forceRefresh: req.query.refresh === "1", allowStale: true });
-    res.json(dashboard);
+    await sendCompressedJson(req, res, dashboard);
   } catch (error) {
     console.error(error);
     const preview = localPortfolioPreview(
       ensurePortfolioReturnFields(await readJsonFile(DASHBOARD_CACHE_FILE, null)),
       { enabled: PERSIST_CREDENTIALS && !AUTH_REQUIRED, calculationVersion: DASHBOARD_CALCULATION_VERSION }
     );
-    if (preview) return res.json(preview);
+    if (preview) return sendCompressedJson(req, res, preview);
     res.status(500).json({ error: error.message });
   }
 });

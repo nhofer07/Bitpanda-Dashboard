@@ -8,7 +8,7 @@ function cursorBoundary(cursor) {
   return Number.isFinite(milliseconds) ? new Date(milliseconds + 1).toISOString() : null;
 }
 
-export async function fetchPublicPages(request, endpoint, params = {}, maxItems = 500) {
+export async function fetchPublicPages(request, endpoint, params = {}, maxItems = 500, { firstPage } = {}) {
   const result = [];
   const seenOperations = new Set();
   let cursor = "";
@@ -16,7 +16,8 @@ export async function fetchPublicPages(request, endpoint, params = {}, maxItems 
   let seenCursors = new Set();
   const recoveredBounds = new Set();
   while (result.length < maxItems) {
-    const payload = await request(endpoint, { params: { ...params, ...(to ? { to } : {}), page_size: Math.min(100, maxItems), cursor } });
+    const payload = firstPage || await request(endpoint, { params: { ...params, ...(to ? { to } : {}), page_size: Math.min(100, maxItems), cursor } });
+    firstPage = null;
     if (!Array.isArray(payload?.data)) throw new Error("Bitpanda Public API lieferte keine gültige Buchungsseite.");
     const nextCursor = payload.has_next_page ? payload.next_cursor : "";
     if (payload.has_next_page && !nextCursor) throw new Error("Bitpanda Public API lieferte keinen nächsten Seitenzeiger.");

@@ -16,6 +16,9 @@ files += [p for p in (root / 'frontend/public').rglob('*') if p.is_file()]
 files += [p for p in (root / 'frontend/test').rglob('*.test.js')]
 files += [root / name for name in [
     'backend/test/dashboard-loading.test.js',
+    'backend/history-read-cache.js', 'backend/test/history-read-cache.test.js',
+    'backend/compressed-json.js', 'backend/test/compressed-json.test.js',
+    'backend/account-asset-catalog.js', 'backend/test/account-asset-catalog.test.js',
     'backend/read-deduplication.js', 'backend/test/read-deduplication.test.js',
     'backend/dashboard-events.js', 'backend/test/dashboard-events.test.js',
     'backend/performance-calendar.js',

@@ -55,6 +55,13 @@ zusätzlich zwischengespeichert. Einzelne API-Leseabrufe haben ein 15-Sekunden-L
 Versionierte JavaScript-/CSS-Dateien dürfen im Browser-Cache bleiben; HTML und
 Manifeste werden bei jedem Aufruf erneut geprüft.
 
+Die vollständige Historie wird nicht jede Minute erneut heruntergeladen: Die neueste
+Seite wird bei jedem Abruf frisch geprüft. Bei Änderungen oder nach Ablauf von fünf
+Minuten werden auch alle älteren Seiten neu geladen. Der Zeitpunkt dieser vollständigen
+Prüfung bleibt als `historyFullyReadAt` im Datenpaket erhalten. Asset-Stammdaten werden
+gezielt für die im Konto vorkommenden Instrumente geladen. Umfangreiche Dashboard-
+Antworten werden bei Browserunterstützung mit gzip übertragen.
+
 Stückkurse unter 10 € werden mit vier Nachkommastellen angezeigt, auch in
 Kurscharts, Kaufhistorie und Einstiegskursen. Bei sehr kleinen Kursen werden
 zusätzliche Stellen verwendet; bei sehr kleinen Chart-Bewegungen erhöht sich

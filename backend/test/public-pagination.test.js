@@ -71,3 +71,9 @@ test("a broken date-filter recovery is bounded and cannot loop or silently drop 
 test("HTTP failures remain failures and are not converted to an empty tax history", async () => {
   await assert.rejects(fetchPublicPages(async () => { throw new Error("HTTP 403"); }, "/operations", {}, Infinity), /HTTP 403/);
 });
+
+test('a prechecked newest page is retained without downloading it twice',async()=>{
+ const calls=[];
+ const rows=await fetchPublicPages(async(endpoint,options)=>{calls.push(options.params.cursor);return{data:[oldest],has_next_page:false};},'/operations',{},Infinity,{firstPage:{data:[first],has_next_page:true,next_cursor:firstCursor}});
+ assert.deepEqual(calls,[firstCursor]);assert.deepEqual(rows.map(row=>row.operation_id),[first.operation_id,oldest.operation_id]);
+});
