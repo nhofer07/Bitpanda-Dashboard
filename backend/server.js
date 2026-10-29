@@ -336,13 +336,15 @@ app.post("/chatgpt/analysis", aiRoute(async (req, res) => {
   const { symbol, category, name, horizon, risk, question = "", model, reasoningEffort = "default" } = req.body || {};
   if (typeof symbol !== "string" || symbol.length > 60 || !symbol.trim() || typeof name !== "string" || name.length > 160 || !["stock", "etf", "crypto", "metal", "other"].includes(category) || !ANALYSIS_HORIZONS.includes(horizon) || !["Niedrig", "Mittel", "Hoch"].includes(risk) || typeof question !== "string" || question.length > 2000) return res.status(400).json({ error: "Bitte gültige Analysevorgaben auswählen." });
   if (!chatgpt.status().eligible) return res.status(403).json({ error: "Bitte zuerst in den Einstellungen ein berechtigtes ChatGPT-Konto verbinden." });
-  const [asset, news, analyst] = await Promise.all([
+  const historyRange = horizon === "Wenige Tage" ? "1w" : ["1–2 Wochen", "2–4 Wochen"].includes(horizon) ? "1mo" : ["1–3 Monate", "3–6 Monate"].includes(horizon) ? "6mo" : "1y";
+  const [asset, news, analyst, chart] = await Promise.all([
     fetchWatchlistQuote({ symbol: normalizeSymbol(symbol), category, name }),
     fetchMarketNews(`${name} ${symbol}`, 8).catch(() => []),
-    fetchAnalystConsensus(normalizeSymbol(symbol), category).catch(() => ({ available: false }))
+    fetchAnalystConsensus(normalizeSymbol(symbol), category).catch(() => ({ available: false })),
+    loadBitpandaChart({ symbol: normalizeSymbol(symbol), category, name, range: historyRange }).catch(() => null)
   ]);
   // Explicit allowlist: never send holdings, transactions, balances or credentials.
-  const context = { asset: { symbol, name, category, price: asset.price, currency: asset.currency, source: asset.source, updatedAt: asset.updatedAt, sourceUpdatedAt: asset.sourceUpdatedAt, changePercent: asset.changePercent, history: asset.history?.map(p => ({ date: p.date, close: p.close })) }, analyst: alignAnalystCurrency(analyst, asset), news: news.map(n => ({ title: n.title, url: n.url || n.link, publishedAt: n.publishedAt, source: n.source })), retrievedAt: new Date().toISOString() };
+  const context = { asset: { symbol, name, category, price: asset.price, currency: asset.currency, source: asset.source, updatedAt: asset.updatedAt, sourceUpdatedAt: asset.sourceUpdatedAt, changePercent: asset.changePercent, history: asset.history?.map(p => ({ date: p.date, close: p.close })) }, priceHistory: chart ? { source: chart.source, currency: chart.currency, unit: chart.unit, range: chart.range, interval: chart.interval, note: chart.note, observationType: "Schlusskurse; keine Intraday-Hochs oder -Tiefs", history: chart.history.slice(-600).map(p => ({ date: p.date, close: p.close })) } : { available: false, message: "Keine zusätzliche verlässliche Kurshistorie verfügbar. Keine konkreten Kurszonen erfinden." }, analyst: alignAnalystCurrency(analyst, asset), news: news.map(n => ({ title: n.title, url: n.url || n.link, publishedAt: n.publishedAt, source: n.source })), retrievedAt: new Date().toISOString() };
   res.json(await chatgpt.analyze(model, analysisPrompt(context, horizon, risk, question), reasoningEffort));
 }));
 app.use((req, res, next) => {

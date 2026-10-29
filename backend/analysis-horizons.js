@@ -11,7 +11,8 @@ export const ANALYSIS_OUTPUT_FORMAT = `Antworte übersichtlich mit etwa 200–25
 **Fazit: Eher interessant / Abwarten / Eher unattraktiv / Daten unzureichend** – eine kurze Begründung, bezogen auf den gewählten Zeitraum.
 - **Dafür:** die ein bis zwei wichtigsten belegten Argumente und warum sie für diesen Zeitraum relevant sind.
 - **Risiko:** die ein bis zwei wichtigsten Gegenargumente und ihre mögliche Auswirkung auf den Trade.
-- **Einstieg:** klare Bedingung und kurze Begründung; keine erfundenen Kursmarken.
-- **Ausstieg:** nachvollziehbares Szenario für Gewinnmitnahme und eine Bedingung, bei der die Idee ungültig wird.
+- **Einstieg:** nenne möglichst einen konkreten Kursbereich als **X–Y EUR**, dazu die Einstiegsbedingung und eine kurze Herleitung aus den gelieferten Schlusskursen (z. B. wiederholt getesteter Preisbereich). Wenn der aktuelle Kurs außerhalb liegt, sage ausdrücklich, dass gewartet werden müsste.
+- **Ausstieg:** nenne möglichst einen konkreten Zielbereich für Gewinnmitnahme als **X–Y EUR** und eine separat benannte Absicherungsmarke **unter Z EUR**, jeweils mit kurzer Herleitung und Bedingung. Kennzeichne dies als bedingtes Szenario für einen neuen Long-Trade, niemals als garantierte Entwicklung.
 - **Datenlage:** wichtigste fehlende Informationen und Datenstand; erkläre knapp, wie diese die Aussagekraft begrenzen.
+Kursbereiche müssen sich aus ausreichend aktuellen gelieferten Daten ableiten lassen und zur Währung und Einheit des Assets passen. Unterscheide historische Beobachtung und deine daraus geschätzte Zone. Schlusskurse sind keine Tageshochs oder Tagestiefs. Bei unzureichender Datenlage oder unplausibler Reihenfolge (Absicherung < Einstieg < Gewinnziel) stattdessen klar „Keine belastbare Kurszone“ schreiben. Keine pauschalen Prozentziele, erfundenen Daten oder Scheingenauigkeit. Runde passend zum Assetpreis.
 Zum Schluss höchstens zwei tatsächlich gelieferte Quellen als kurze Links. Beantworte eine Zusatzfrage innerhalb dieser Punkte. Formuliere jeden Punkt in zwei bis drei kurzen Sätzen; liefere konkrete Begründungen statt Fülltext. Keine garantierten Gewinne oder Sicherheit vortäuschen.`;

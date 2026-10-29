@@ -60,3 +60,7 @@ Neben der Modellwahl kann die Denkstufe eingestellt werden. Angeboten werden die
 ## Kompakte Ausgabe
 
 Analysen werden als kurzes Fazit mit fünf Stichpunkten (Dafür, Risiko, Einstieg, Ausstieg, Datenlage) und maximal zwei Quellen angefordert, insgesamt etwa 200–250 Wörter, bei dünner Datenlage kürzer. Das gilt auch für kopierte ChatGPT-Anfragen. Die Längenvorgabe ist eine Modellanweisung; Antworten werden nicht nachträglich abgeschnitten, damit Risiken und fehlende Daten erhalten bleiben.
+
+## Konkrete Kursbereiche
+
+Für die Analyse wird zusätzlich öffentliche Kurshistorie geladen: eine Woche für wenige Tage, ein Monat für Wochen-Trades, sechs Monate für mittelfristige Horizonte und ein Jahr für längerfristige Anlagen. Quelle, Währung, Einheit, Zeitraum und tatsächliche Zeitstempel werden mitgeliefert, maximal die letzten 600 Schlusskurse. Die KI soll daraus bedingte Einstiegs- und Gewinnmitnahmezonen sowie eine Absicherungsmarke mit kurzer Herleitung nennen. Diese Zonen sind Modellschätzungen aus Kursbeobachtungen, keine berechneten Ausführungspreise oder garantierten Ziele. Fehlende oder veraltete Daten müssen zu einer klaren Einschränkung statt erfundenen Zahlen führen. Spread, Gebühren und Kurslücken können tatsächliche Ausführungen beeinflussen.
