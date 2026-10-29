@@ -310,3 +310,7 @@ API.
 ### ChatGPT-Analyse
 
 In den Einstellungen lässt sich ein berechtigtes ChatGPT-Konto verbinden. Assets und Marktanalyse bieten anschließend eine KI-Einschätzung mit Modellwahl, Anlagehorizont und Risikoneigung. Es gibt keinen kostenpflichtigen API-Ersatz. Einrichtung, Credit-Einstellungen und Synology-Anmeldetunnel: [ChatGPT-Anleitung](docs/chatgpt.md).
+
+### TradingView auf der Fusion-Seite
+
+Unter Fusion lässt sich zwischen Fusion-Kurs und TradingView umschalten. Das kostenlose Advanced-Chart-Widget bietet Kerzen, Zeitintervalle, Indikatoren und Zeichenwerkzeuge. Es startet mit einem Kraken-Referenzmarkt zum Fusion-Paar; ein anderes TradingView-Symbol kann eingegeben werden. Nicht jedes Fusion-Paar ist dort verfügbar. Referenzkurse sind keine Fusion-Ausführungspreise; Orderbuch und Orderformular bleiben beim ausgewählten Fusion-Paar. Der externe Chart läuft isoliert, ohne Zugriff auf Dashboard-Daten. Internetzugang zu TradingView ist erforderlich.

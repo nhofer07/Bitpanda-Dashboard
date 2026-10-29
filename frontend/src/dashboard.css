@@ -618,3 +618,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .dashboard-shell .asset-entry.is-selected{background:#183027;box-shadow:inset 3px 0 var(--accent)}
 .dashboard-shell .asset-entry:hover{background:var(--surface-soft)}.dashboard-shell .asset-entry:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
 @media(max-width:600px){.dashboard-shell .asset-entry{padding:16px;gap:12px}.asset-entry-head{padding-inline:16px 40px}.asset-entry-value{font-size:14px}}
+
+.fusion-chart-switch{display:flex;gap:8px;padding:0 22px 16px;flex-wrap:wrap}.dashboard-shell .fusion-chart-switch button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:#183027}
+.fusion-tradingview{padding:0 16px 16px;min-width:0}.fusion-tradingview iframe{display:block;width:100%;height:610px;border:1px solid var(--edge);border-radius:8px;background:#131722}.tradingview-symbol-form{display:flex;align-items:end;gap:12px;margin:12px 0}.tradingview-symbol-form label{display:grid;gap:6px;flex:1;min-width:0;color:var(--muted);font-size:12px}.tradingview-symbol-form input{width:100%}.fusion-tradingview a{color:var(--accent)}
+@media(max-width:600px){.fusion-tradingview iframe{height:520px}.tradingview-symbol-form{flex-wrap:wrap}.tradingview-symbol-form label{flex-basis:100%}}
