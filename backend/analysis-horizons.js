@@ -6,3 +6,12 @@ export function horizonGuidance(horizon) {
   }
   return 'Bewerte eine längerfristige Anlage: Geschäftsmodell, Bewertung, Fundamentaldaten und langfristige Chancen und Risiken, soweit aktuelle Daten vorliegen.';
 }
+
+export const ANALYSIS_OUTPUT_FORMAT = `Antworte kompakt mit höchstens 120 Wörtern insgesamt. Keine Einleitung, langen Absätze, Tabellen oder wiederholten Hinweise. Halte genau dieses Format ein:
+**Fazit: Eher interessant / Abwarten / Eher unattraktiv / Daten unzureichend** – eine kurze Begründung, bezogen auf den gewählten Zeitraum.
+- **Dafür:** stärkstes belegtes Argument.
+- **Risiko:** wichtigstes Gegenargument.
+- **Einstieg:** klare Bedingung; keine erfundenen Kursmarken.
+- **Ausstieg:** Gewinnmitnahme oder Bedingung, bei der die Idee ungültig wird.
+- **Datenlage:** wichtigste fehlende Information und Datenstand, sehr kurz.
+Zum Schluss höchstens zwei tatsächlich gelieferte Quellen als kurze Links. Beantworte eine Zusatzfrage innerhalb dieser Punkte. Formuliere jede Zeile in höchstens zwei kurzen Sätzen. Keine garantierten Gewinne oder Sicherheit vortäuschen.`;

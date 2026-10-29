@@ -1,4 +1,4 @@
-import { ANALYSIS_HORIZONS, DEFAULT_ANALYSIS_HORIZON, horizonGuidance } from '../../../backend/analysis-horizons.js';
+import { ANALYSIS_HORIZONS, DEFAULT_ANALYSIS_HORIZON, horizonGuidance, ANALYSIS_OUTPUT_FORMAT } from '../../../backend/analysis-horizons.js';
 import { lazy, Suspense, useEffect, useState } from 'react';
 const ReactMarkdown = lazy(() => import('react-markdown'));
 async function request(path, body) {
@@ -46,11 +46,11 @@ export function AIAnalysis({ asset }) {
     try { setResult(await request('analysis', { symbol: asset.symbol, name: asset.name || asset.symbol, category: asset.category || 'other', model, reasoningEffort: effort, horizon, risk, question })); } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
   async function copy() {
-    const text = `Analysiere ${asset.name || asset.symbol} (${asset.symbol}, ${asset.category || 'Asset'}) auf Deutsch. Trade- / Anlagehorizont: ${horizon}; Risikoneigung: ${risk}. Prüfe aktuelle öffentliche Quellen mit Datum, Chancen, Risiken, Fundamentaldaten und fehlende Informationen. Gib eine bedingte Einschätzung zum Kauf, keine Garantie. ${horizonGuidance(horizon)} ${question}`;
+    const text = `Analysiere ${asset.name || asset.symbol} (${asset.symbol}, ${asset.category || 'Asset'}) auf Deutsch. Trade- / Anlagehorizont: ${horizon}; Risikoneigung: ${risk}. Prüfe aktuelle öffentliche Quellen mit Datum, Chancen, Risiken, Fundamentaldaten und fehlende Informationen. Gib eine bedingte Einschätzung zum Kauf, keine Garantie. ${horizonGuidance(horizon)} ${question}\n${ANALYSIS_OUTPUT_FORMAT}`;
     try { await navigator.clipboard.writeText(text); setError('Anfrage kopiert. In ChatGPT einfügen.'); } catch { setResult({ text, updatedAt: new Date().toISOString(), model: 'Anfrage zum manuellen Kopieren' }); }
   }
   return <section className="table-card ai-analysis"><div className="section-heading"><h3>KI-Analyse · {asset.name || asset.symbol}</h3><span>ChatGPT</span></div>
-    <p>Chancen, Risiken und eine begründete Einschätzung anhand öffentlicher Daten. Bestände und Transaktionen werden nicht übertragen.</p>
+    <p>Ein kurzes Fazit mit den wichtigsten Punkten zu Chance, Risiko, Einstieg und Ausstieg. Bestände und Transaktionen werden nicht übertragen.</p>
     <div className="ai-controls"><label>Trade- / Anlagehorizont<select disabled={busy} value={horizon} onChange={e => { setHorizon(e.target.value); setResult(null); }}>{ANALYSIS_HORIZONS.map(v => <option key={v}>{v}</option>)}</select></label><label>Risikoneigung<select disabled={busy} value={risk} onChange={e => { setRisk(e.target.value); setResult(null); }}>{['Niedrig', 'Mittel', 'Hoch'].map(v => <option key={v}>{v}</option>)}</select></label>{eligible && <label>Modell<select disabled={busy} value={model} onChange={e => { setModel(e.target.value); setEffort('default'); setResult(null); }}>{models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>}{eligible && <label>Denkstufe<select disabled={busy} value={effort} onChange={e => { setEffort(e.target.value); setResult(null); }}><option value="default">Modellstandard{models.find(m => m.id === model)?.defaultReasoningEffort ? ` (${models.find(m => m.id === model).defaultReasoningEffort})` : ''}</option>{(models.find(m => m.id === model)?.reasoningEfforts || []).map(level => <option key={level} value={level}>{level}</option>)}</select></label>}</div>
     {eligible && <p className="source-note">Höhere Denkstufen können länger dauern und mehr von deinem Abo-Kontingent verbrauchen. Die Auswahl richtet sich nach den Modellangaben von OpenAI.</p>}
     <label className="settings-field"><span>Deine Frage (optional, keine privaten Finanzdaten eingeben)</span><textarea maxLength={2000} disabled={busy} value={question} onChange={e => { setQuestion(e.target.value); setResult(null); }} placeholder="Was spricht für einen Einstieg in den nächsten Wochen?" /></label>

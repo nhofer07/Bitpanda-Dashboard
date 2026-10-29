@@ -56,3 +56,7 @@ Auswahl von wenigen Tagen über 1–2 bzw. 2–4 Wochen bis zu Monaten und mehrj
 ## Denkstufe
 
 Neben der Modellwahl kann die Denkstufe eingestellt werden. Angeboten werden die im aktuellen Konto-Modellkatalog ausgewiesenen, für Responses gültigen Stufen (z. B. low, medium, high, xhigh, max). „Modellstandard“ sendet keinen reasoning-Parameter und zeigt den vom Katalog gemeldeten Standard, sofern vorhanden. Fehlen Modellangaben, bleibt nur Modellstandard verfügbar. Beim Modellwechsel wird die Auswahl zurückgesetzt; der Server validiert die Stufe erneut vor jeder Analyse. Höhere Stufen können mehr Zeit und Abo-Kontingent benötigen.
+
+## Kompakte Ausgabe
+
+Analysen werden als kurzes Fazit mit fünf Stichpunkten (Dafür, Risiko, Einstieg, Ausstieg, Datenlage) und maximal zwei Quellen angefordert, insgesamt höchstens 120 Wörter. Das gilt auch für kopierte ChatGPT-Anfragen. Die Wortgrenze ist eine Modellanweisung; Antworten werden nicht nachträglich abgeschnitten, damit Risiken und fehlende Daten erhalten bleiben.
