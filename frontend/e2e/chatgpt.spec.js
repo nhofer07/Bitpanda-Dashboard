@@ -26,8 +26,11 @@ test('explicit analysis sends only identity and preferences; safely renders mode
   await page.goto('/#assets'); const panel = page.locator('.ai-analysis');
   await expect(panel.getByRole('button', { name: 'Mit ChatGPT analysieren' })).toBeEnabled();
   expect(received).toBeUndefined();
+  await expect(panel.getByLabel('Trade- / Anlagehorizont')).toHaveValue('2–4 Wochen');
+  await panel.getByLabel('Trade- / Anlagehorizont').selectOption('1–2 Wochen');
   await panel.getByRole('button', { name: 'Mit ChatGPT analysieren' }).click();
   await expect(panel.getByRole('heading', { name: 'Einschätzung' })).toBeVisible();
+  expect(received.horizon).toBe('1–2 Wochen');
   expect(Object.keys(received).sort()).toEqual(['category', 'horizon', 'model', 'name', 'question', 'risk', 'symbol'].sort());
   await expect(panel.locator('.ai-result script')).toHaveCount(0);
   await expect(panel.getByRole('link', { name: 'Quelle' })).toHaveAttribute('rel', 'noreferrer');

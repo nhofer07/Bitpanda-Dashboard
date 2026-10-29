@@ -1,3 +1,4 @@
+import { ANALYSIS_HORIZONS, DEFAULT_ANALYSIS_HORIZON, horizonGuidance } from '../../../backend/analysis-horizons.js';
 import { lazy, Suspense, useEffect, useState } from 'react';
 const ReactMarkdown = lazy(() => import('react-markdown'));
 async function request(path, body) {
@@ -38,20 +39,20 @@ export function ChatGPTSettings() {
   </section>;
 }
 export function AIAnalysis({ asset }) {
-  const [models, setModels] = useState([]), [model, setModel] = useState(''), [horizon, setHorizon] = useState('3–5 Jahre'), [risk, setRisk] = useState('Mittel'), [question, setQuestion] = useState(''), [result, setResult] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(false), [eligible, setEligible] = useState(false);
+  const [models, setModels] = useState([]), [model, setModel] = useState(''), [horizon, setHorizon] = useState(DEFAULT_ANALYSIS_HORIZON), [risk, setRisk] = useState('Mittel'), [question, setQuestion] = useState(''), [result, setResult] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(false), [eligible, setEligible] = useState(false);
   useEffect(() => { let active = true; request('status').then(async s => { if (!active) return; setEligible(Boolean(s.eligible)); if (s.eligible) { const data = await request('models'); if (active) { setModels(data.models || []); setModel(data.models?.[0]?.id || ''); } } }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, []);
   async function analyze() {
     setBusy(true); setError(''); setResult(null);
     try { setResult(await request('analysis', { symbol: asset.symbol, name: asset.name || asset.symbol, category: asset.category || 'other', model, horizon, risk, question })); } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
   async function copy() {
-    const text = `Analysiere ${asset.name || asset.symbol} (${asset.symbol}, ${asset.category || 'Asset'}) auf Deutsch. Anlagehorizont: ${horizon}; Risikoneigung: ${risk}. Prüfe aktuelle öffentliche Quellen mit Datum, Chancen, Risiken, Fundamentaldaten und fehlende Informationen. Gib eine bedingte Einschätzung zum Kauf, keine Garantie. ${question}`;
+    const text = `Analysiere ${asset.name || asset.symbol} (${asset.symbol}, ${asset.category || 'Asset'}) auf Deutsch. Trade- / Anlagehorizont: ${horizon}; Risikoneigung: ${risk}. Prüfe aktuelle öffentliche Quellen mit Datum, Chancen, Risiken, Fundamentaldaten und fehlende Informationen. Gib eine bedingte Einschätzung zum Kauf, keine Garantie. ${horizonGuidance(horizon)} ${question}`;
     try { await navigator.clipboard.writeText(text); setError('Anfrage kopiert. In ChatGPT einfügen.'); } catch { setResult({ text, updatedAt: new Date().toISOString(), model: 'Anfrage zum manuellen Kopieren' }); }
   }
   return <section className="table-card ai-analysis"><div className="section-heading"><h3>KI-Analyse · {asset.name || asset.symbol}</h3><span>ChatGPT</span></div>
     <p>Chancen, Risiken und eine begründete Einschätzung anhand öffentlicher Daten. Bestände und Transaktionen werden nicht übertragen.</p>
-    <div className="ai-controls"><label>Anlagehorizont<select disabled={busy} value={horizon} onChange={e => { setHorizon(e.target.value); setResult(null); }}>{['1 Jahr', '3–5 Jahre', 'Über 5 Jahre'].map(v => <option key={v}>{v}</option>)}</select></label><label>Risikoneigung<select disabled={busy} value={risk} onChange={e => { setRisk(e.target.value); setResult(null); }}>{['Niedrig', 'Mittel', 'Hoch'].map(v => <option key={v}>{v}</option>)}</select></label>{eligible && <label>Modell<select disabled={busy} value={model} onChange={e => { setModel(e.target.value); setResult(null); }}>{models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>}</div>
-    <label className="settings-field"><span>Deine Frage (optional, keine privaten Finanzdaten eingeben)</span><textarea maxLength={2000} disabled={busy} value={question} onChange={e => { setQuestion(e.target.value); setResult(null); }} placeholder="Was spricht für einen langfristigen Einstieg?" /></label>
+    <div className="ai-controls"><label>Trade- / Anlagehorizont<select disabled={busy} value={horizon} onChange={e => { setHorizon(e.target.value); setResult(null); }}>{ANALYSIS_HORIZONS.map(v => <option key={v}>{v}</option>)}</select></label><label>Risikoneigung<select disabled={busy} value={risk} onChange={e => { setRisk(e.target.value); setResult(null); }}>{['Niedrig', 'Mittel', 'Hoch'].map(v => <option key={v}>{v}</option>)}</select></label>{eligible && <label>Modell<select disabled={busy} value={model} onChange={e => { setModel(e.target.value); setResult(null); }}>{models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>}</div>
+    <label className="settings-field"><span>Deine Frage (optional, keine privaten Finanzdaten eingeben)</span><textarea maxLength={2000} disabled={busy} value={question} onChange={e => { setQuestion(e.target.value); setResult(null); }} placeholder="Was spricht für einen Einstieg in den nächsten Wochen?" /></label>
     <div className="settings-actions"><button className="primary-button" disabled={busy || !eligible || !model} onClick={analyze}>{busy ? 'Analysiert …' : 'Mit ChatGPT analysieren'}</button><button className="secondary-button" disabled={busy} onClick={copy}>Analyse für ChatGPT kopieren</button></div>
     {!eligible && <p>Für die direkte Analyse zuerst in den Einstellungen ChatGPT verbinden und die Abo-Nutzung freigeben. Free-Nutzer können die Anfrage kopieren.</p>}
     {error && <p role="status">{error}</p>}

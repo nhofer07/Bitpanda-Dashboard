@@ -1,3 +1,4 @@
+import { ANALYSIS_HORIZONS } from "./analysis-horizons.js";
 import { createChatGPT, analysisPrompt } from "./chatgpt.js";
 import { sendCompressedJson } from "./compressed-json.js";
 import { createHistoryReadCache } from "./history-read-cache.js";
@@ -333,7 +334,7 @@ app.post("/chatgpt/disconnect", aiRoute(async (req, res) => res.json(await chatg
 app.get("/chatgpt/models", aiRoute(async (req, res) => res.json({ models: await chatgpt.models() })));
 app.post("/chatgpt/analysis", aiRoute(async (req, res) => {
   const { symbol, category, name, horizon, risk, question = "", model } = req.body || {};
-  if (typeof symbol !== "string" || symbol.length > 60 || !symbol.trim() || typeof name !== "string" || name.length > 160 || !["stock", "etf", "crypto", "metal", "other"].includes(category) || !["1 Jahr", "3–5 Jahre", "Über 5 Jahre"].includes(horizon) || !["Niedrig", "Mittel", "Hoch"].includes(risk) || typeof question !== "string" || question.length > 2000) return res.status(400).json({ error: "Bitte gültige Analysevorgaben auswählen." });
+  if (typeof symbol !== "string" || symbol.length > 60 || !symbol.trim() || typeof name !== "string" || name.length > 160 || !["stock", "etf", "crypto", "metal", "other"].includes(category) || !ANALYSIS_HORIZONS.includes(horizon) || !["Niedrig", "Mittel", "Hoch"].includes(risk) || typeof question !== "string" || question.length > 2000) return res.status(400).json({ error: "Bitte gültige Analysevorgaben auswählen." });
   if (!chatgpt.status().eligible) return res.status(403).json({ error: "Bitte zuerst in den Einstellungen ein berechtigtes ChatGPT-Konto verbinden." });
   const [asset, news, analyst] = await Promise.all([
     fetchWatchlistQuote({ symbol: normalizeSymbol(symbol), category, name }),

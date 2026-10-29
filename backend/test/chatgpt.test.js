@@ -99,5 +99,11 @@ test('dashboard authentication protects ChatGPT routes even without a Bitpanda k
   assert.equal(setup.status, 200); const cookie = setup.headers.get('set-cookie').split(';')[0];
   const response = await fetch(`${base}/chatgpt/status`, { headers: { cookie } }); assert.equal(response.status, 200); assert.equal((await response.json()).eligible, false);
   const forbidden = await fetch(`${base}/chatgpt/connect`, { method: 'POST', headers: { cookie, Origin: 'https://untrusted.example', 'Content-Type': 'application/json' }, body: '{}' }); assert.equal(forbidden.status, 403);
-  const analysis = await fetch(`${base}/chatgpt/analysis`, { method: 'POST', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'AAPL', name: 'Apple', category: 'stock', horizon: '3–5 Jahre', risk: 'Mittel' }) }); assert.equal(analysis.status, 403);
+  const analysis = await fetch(`${base}/chatgpt/analysis`, { method: 'POST', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'AAPL', name: 'Apple', category: 'stock', horizon: '1–2 Wochen', risk: 'Mittel' }) }); assert.equal(analysis.status, 403);
+});
+
+test('short trades request entry, exit and invalidation without invented price levels', () => {
+  const short = analysisPrompt({}, '2–4 Wochen', 'Mittel');
+  assert.match(short, /kurzfristigen Trade/); assert.match(short, /Ausstiegsszenario/); assert.match(short, /Spread und Gebühren/); assert.match(short, /nur, wenn ausreichend aktuelle Kursdaten/);
+  assert.doesNotMatch(analysisPrompt({}, 'Über 5 Jahre', 'Mittel'), /Bewerte ausdrücklich einen kurzfristigen Trade/);
 });
