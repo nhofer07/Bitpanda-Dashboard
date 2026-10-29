@@ -16,20 +16,13 @@ const RANGES = [
   ["all", "Gespeichert", Infinity]
 ];
 const RETURN_LABELS = { "1d": "Rendite heute", "1w": "Rendite 1 Woche", "1m": "Rendite 1 Monat", "1y": "Rendite 1 Jahr", "5y": "Rendite 5 Jahre", "6m": "Rendite 6 Monate", all: "Rendite Gesamt" };
-const VALUE_MODE_STORAGE_KEY = "bitpanda-dashboard-portfolio-value-mode";
 
 
 
 
 export default function PortfolioValueChart({ snapshots = [], currentValue, loadedAt, historyStartedAt, transactions = [], cashflowOverrides = {}, initialHistory }) {
   const [range, setRange] = useState("1d");
-  const [uniformValue, setUniformValue] = useState(() => {
-    try {
-      return localStorage.getItem(VALUE_MODE_STORAGE_KEY) !== "actual";
-    } catch {
-      return true;
-    }
-  });
+  const [uniformValue, setUniformValue] = useState(true);
   const [showCashflows, setShowCashflows] = useState(false);
   const api = usePortfolioHistory(range, loadedAt, initialHistory);
   const comparisonRange = range === "1m" ? "6m" : range === "6m" ? "1m" : range === "1y" ? "6m" : null;
@@ -38,11 +31,6 @@ export default function PortfolioValueChart({ snapshots = [], currentValue, load
   const [showUnverified, setShowUnverified] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [selectedCashflow, setSelectedCashflow] = useState(null);
-  useEffect(() => {
-    try {
-      localStorage.setItem(VALUE_MODE_STORAGE_KEY, uniformValue ? "adjusted" : "actual");
-    } catch { /* Browser storage can be unavailable. */ }
-  }, [uniformValue]);
   const localPoints = useMemo(() => portfolioChartPoints({ snapshots, currentValue, loadedAt, historyStartedAt }), [snapshots, currentValue, loadedAt, historyStartedAt]);
 
   const awaitingReference = range === "1y" && api.history && !comparisonApi.history && !comparisonApi.error;
@@ -110,7 +98,7 @@ export default function PortfolioValueChart({ snapshots = [], currentValue, load
     return [...API_PORTFOLIO_RANGES, ...RANGES.filter(([id, , duration]) => (id === 'all' && localPoints.length > 0) || (id === '5y' && recordedDuration >= duration))];
   }, [localPoints]);
   const rangeButtons = <div className="portfolio-range-buttons" aria-label="Zeitraum Portfolioverlauf">
-    {availableRanges.map(([id, label]) => <button key={id} className={range === id ? 'active' : ''} onClick={() => { setRange(id); if (id === "1y") setUniformValue(false); setSelectedIndex(-1); setSelectedCashflow(null); }}>{label}</button>)}
+    {availableRanges.map(([id, label]) => <button key={id} className={range === id ? 'active' : ''} onClick={() => { setRange(id); setSelectedIndex(-1); setSelectedCashflow(null); }}>{label}</button>)}
   </div>;
 
   const bucketFlows = useMemo(() => usingApi ? portfolioHistoryCashflows(visible, cashflows, api.history.loadedAt) : null, [usingApi, visible, cashflows, api.history?.loadedAt]);

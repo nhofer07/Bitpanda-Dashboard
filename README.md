@@ -211,7 +211,7 @@ Der eigenständige App-Modus hängt vom Browser und einer geeigneten HTTPS-Verbi
 ab. Es werden keine Kontodaten für eine Offline-Nutzung zwischengespeichert.
 
 Der Portfoliochart startet mit bereinigten Werten. „Tatsächliche Werte anzeigen“
-wechselt Kurve, Skala und Extremwerte gemeinsam; die Auswahl bleibt gespeichert.
+wechselt Kurve, Skala und Extremwerte gemeinsam; beim erneuten Öffnen startet wieder die bereinigte Ansicht.
 Bei Zahlungsbewegungen im Zeitraum zeigt er das bereinigte Ergebnis in Euro,
 aber keine Prozent-Rendite: Messungen unmittelbar vor jeder Buchung fehlen.
 Ohne Zahlungsbewegungen wird die prozentuale Wertentwicklung angezeigt.
@@ -337,4 +337,4 @@ Die Asset-Quote und das Fusion-Orderformular zeigen den geschätzten Gewinn/Verl
 
 Beim Kauf kann ein späterer Verkaufskurs als Szenario eingegeben werden. Das ist eine hypothetische Rendite für die neu gekaufte Menge, kein bereits realisierter Gewinn. Maßgeblich bleibt die endgültige Bitpanda-Abrechnung.
 
-Für identische, abgeschlossene Schlusszeitpunkte verwendet der Jahreschart die höher aufgelösten Tageswerte aus dem Sechsmonatsverlauf. Die Jahres-Originaldaten bleiben im Vergleich nachvollziehbar. Zeitstempel und Bucket-Längen des Jahresrasters bleiben für die Cashflow-Zuordnung erhalten. Der Jahreschart öffnet mit tatsächlichen Eurobeständen; der kapitalbereinigte Vergleich ist weiterhin umschaltbar.
+Für identische, abgeschlossene Schlusszeitpunkte verwendet der Jahreschart die höher aufgelösten Tageswerte aus dem Sechsmonatsverlauf. Die Jahres-Originaldaten bleiben im Vergleich nachvollziehbar. Zeitstempel und Bucket-Längen des Jahresrasters bleiben für die Cashflow-Zuordnung erhalten. Auch der Jahreschart startet in der bereinigten Ansicht; tatsächliche Eurobestände sind manuell umschaltbar.
