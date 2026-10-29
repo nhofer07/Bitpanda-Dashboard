@@ -284,7 +284,7 @@ export default function App() {
           </button>
           <button
             className="info-toggle"
-            onClick={() => setInfoOpen(true)}
+            onClick={event => { event.currentTarget.focus(); setInfoOpen(true); }}
             aria-label="Erklärung zur aktuellen Seite öffnen"
             title="Erklärung zur aktuellen Seite öffnen"
           >
@@ -333,7 +333,7 @@ export default function App() {
       {activeView === "fees" && <FeesView data={dashboardData} loading={dashboardLoading} error={dashboardError} onSelectAsset={openAsset} />}
 
       {activeView === "market" && <MarketAnalysisView dashboardData={dashboardData} loading={dashboardLoading} />}
-      {activeView === "fusion" && <FusionView />}
+      {activeView === "fusion" && <FusionView dashboardData={dashboardData} />}
 
       {activeView === "fiat" && (
         <>

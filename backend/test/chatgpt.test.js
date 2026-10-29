@@ -98,6 +98,10 @@ test('dashboard authentication protects ChatGPT routes even without a Bitpanda k
   const setup = await fetch(`${base}/auth/setup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'test-person', password: 'temporary-test-password-123' }) });
   assert.equal(setup.status, 200); const cookie = setup.headers.get('set-cookie').split(';')[0];
   const response = await fetch(`${base}/chatgpt/status`, { headers: { cookie } }); assert.equal(response.status, 200); assert.equal((await response.json()).eligible, false);
+  assert.equal((await fetch(`${base}/chart-drawings/BTC-EUR`)).status, 401);
+  const drawings = await fetch(`${base}/chart-drawings/BTC-EUR`, { method: 'PUT', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ revision: 0, drawings: [] }) }); assert.equal(drawings.status, 200);
+  assert.equal((await (await fetch(`${base}/chart-drawings/BTC-EUR`, { headers: { cookie } })).json()).revision, 1);
+  const settings = await fetch(`${base}/settings`, { method: 'PUT', headers: { cookie, 'Content-Type': 'application/json' }, body: '{}' }); assert.equal(settings.status, 200);
   const forbidden = await fetch(`${base}/chatgpt/connect`, { method: 'POST', headers: { cookie, Origin: 'https://untrusted.example', 'Content-Type': 'application/json' }, body: '{}' }); assert.equal(forbidden.status, 403);
   const analysis = await fetch(`${base}/chatgpt/analysis`, { method: 'POST', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'AAPL', name: 'Apple', category: 'stock', horizon: '1–2 Wochen', risk: 'Mittel' }) }); assert.equal(analysis.status, 403);
 });

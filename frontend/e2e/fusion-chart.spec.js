@@ -6,7 +6,7 @@ for (const width of [390, 1440]) test(`Fusion TradingView switch keeps execution
   let mutations = 0; page.on('request', r => { if (r.url().includes('/api/fusion/') && r.method() !== 'GET') mutations++; });
   if (!process.env.LIVE_TRADINGVIEW) await page.route('https://www.tradingview-widget.com/embed-widget/advanced-chart/**', route => route.fulfill({ contentType: 'text/html', body: '<html><body>TradingView-Testchart</body></html>' }));
   await page.goto('/#fusion');
-  await expect(page.getByRole('button', { name: 'Fusion-Kurs', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'TradingView', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'TradingView', exact: true }).click();
   const chart = page.locator('.fusion-tradingview iframe');
   await expect(chart).toHaveAttribute('title', 'TradingView-Chart KRAKEN:BTCEUR');
@@ -27,4 +27,16 @@ for (const width of [390, 1440]) test(`Fusion TradingView switch keeps execution
   await page.getByRole('button', { name: 'Fusion-Kurs', exact: true }).click();
   await expect(chart).toHaveCount(0); await expect(page.locator('.fusion-chart')).toBeVisible();
   expect(mutations).toBe(0);
+});
+
+test('TradingView fullscreen fills the viewport and exits without changing the Fusion pair', async ({ page }) => {
+  const state = await mockApp(page); Object.assign(state, visualFixture());
+  await page.route('https://www.tradingview-widget.com/**', route => route.fulfill({ contentType: 'text/html', body: '<html><body>TradingView</body></html>' }));
+  await page.goto('/#fusion'); const stage = page.locator('.tradingview-stage');
+  await stage.getByRole('button', { name: 'Vollbild', exact: true }).click();
+  await expect(stage.getByRole('button', { name: 'Vollbild verlassen', exact: true })).toBeVisible();
+  const box = await stage.boundingBox(); expect(box.x).toBeLessThanOrEqual(1); expect(box.y).toBeLessThanOrEqual(1);
+  await stage.getByRole('button', { name: 'Vollbild verlassen', exact: true }).click();
+  await expect(stage.getByRole('button', { name: 'Vollbild', exact: true })).toBeVisible();
+  await expect(page.locator('.fusion-pair-search input')).toHaveValue('BTC-EUR');
 });

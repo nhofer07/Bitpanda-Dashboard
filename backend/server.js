@@ -1,3 +1,6 @@
+import { auditHistoricalPortfolio } from "./historical-portfolio-audit.js";
+import { buildChartCashflows } from "./chart-cashflows.js";
+import { createChartDrawingStore } from "./chart-drawing-store.js";
 import { ANALYSIS_HORIZONS } from "./analysis-horizons.js";
 import { createChatGPT, analysisPrompt } from "./chatgpt.js";
 import { sendCompressedJson } from "./compressed-json.js";
@@ -313,6 +316,8 @@ app.put("/settings", async (req, res) => {
     settingsRevision += 1;
     accountAssetCatalog.clear();
     historyReadCache.clear();
+    portfolioAuditJobs.clear();
+    historicalPriceCache.clear();
     dashboardEvents.clear();
     portfolioHistoryLoader.clear();
     dashboardRefreshPromise = null;
@@ -323,6 +328,15 @@ app.put("/settings", async (req, res) => {
     res.json(settingsStatus());
   } catch { res.status(500).json({ error: "Die Zugangsdaten konnten nicht gespeichert werden." }); }
   finally { savingSettings = false; }
+});
+const chartDrawings = createChartDrawingStore(path.join(DATA_DIR, "fusion-chart-drawings"));
+app.get("/chart-drawings/:pair", async (req, res) => {
+  try { res.json(await chartDrawings.read(req.params.pair)); }
+  catch { res.status(500).json({ error: "Gespeicherte Zeichnungen konnten nicht geladen werden. Der Serverstand wurde nicht verändert." }); }
+});
+app.put("/chart-drawings/:pair", async (req, res) => {
+  try { res.json(await chartDrawings.update(req.params.pair, req.body)); }
+  catch (error) { res.status(error.status || 400).json({ error: error.message }); }
 });
 const chatgpt = await createChatGPT({ directory: DATA_DIR, callbackPort: Number(process.env.CHATGPT_CALLBACK_PORT || 1455), callbackHost: process.env.CHATGPT_CALLBACK_HOST || "127.0.0.1" });
 const aiRoute = handler => async (req, res) => { try { await handler(req, res); } catch (error) { res.status(400).json({ error: error.message || "ChatGPT-Anfrage fehlgeschlagen." }); } };
@@ -1232,6 +1246,28 @@ const portfolioHistoryLoader = createPortfolioHistoryLoader(async timeframe => {
   const payload = await publicApiRequest("/portfolio-history", { params: { timeframe, equivalent_currency_id: eurCurrencyId }, timeoutMs: 15_000 });
   if (revision !== settingsRevision) throw new Error("Konto wurde während des Abrufs geändert.");
   return normalizePortfolioHistory(payload, { timeframe, eurCurrencyId });
+});
+
+const portfolioAuditJobs = new Map(), historicalPriceCache = new Map();
+app.get("/portfolio-history-audit", async (req, res) => {
+  const timeframe = { "1y": "YEAR", "6m": "SIX_MONTH" }[req.query.range];
+  if (!timeframe) return res.status(400).json({ error: "Dieser Zeitraum unterstützt keinen historischen Tagesabgleich." });
+  try {
+    const revision = settingsRevision;
+    const [history, cache, overrides] = await Promise.all([portfolioHistoryLoader.load(timeframe), readDashboardCache(DASHBOARD_CACHE_FILE), readJsonFile(CASHFLOW_OVERRIDES_FILE, {})]);
+    if (revision !== settingsRevision) return res.status(409).json({ error: "Konto wurde während des Abrufs geändert." });
+    const key = createHash("sha256").update(JSON.stringify([revision, history.snapshots, cache?.accountInsights?.coverage, cache?.accountInsights?.ledger?.length, overrides])).digest("hex");
+    if (!portfolioAuditJobs.has(key)) {
+      if (portfolioAuditJobs.size > 20) portfolioAuditJobs.clear();
+      const job = { result: { pending: true, checks: [] } }; portfolioAuditJobs.set(key, job);
+      void auditHistoricalPortfolio({ snapshots: history.snapshots, ledger: cache?.accountInsights?.ledger || [], assets: cache?.profitLoss?.assets || [], loadedAt: cache?.loadedAt, cashflows: buildChartCashflows(cache?.transactions || [], overrides?.overrides || overrides), loadPrices: async options => {
+        const priceKey = JSON.stringify(options), cached = historicalPriceCache.get(priceKey);
+        if (cached && Date.now() - cached.time < 3600000) return cached.value;
+        const value = await loadBitpandaChart(options); historicalPriceCache.set(priceKey, { time: Date.now(), value }); return value;
+      } }).then(result => { job.result = result; }).catch(() => { job.result = { pending: false, checks: [], error: "Historischer Abgleich ist derzeit nicht vollständig verfügbar." }; });
+    }
+    res.json(portfolioAuditJobs.get(key).result);
+  } catch { res.status(502).json({ error: "Historischer Portfolio-Abgleich konnte nicht gestartet werden." }); }
 });
 
 app.get("/portfolio-history", async (req, res) => {

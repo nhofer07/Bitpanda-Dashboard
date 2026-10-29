@@ -314,3 +314,27 @@ In den Einstellungen lässt sich ein berechtigtes ChatGPT-Konto verbinden. Asset
 ### TradingView auf der Fusion-Seite
 
 Unter Fusion lässt sich zwischen Fusion-Kurs und TradingView umschalten. Das kostenlose Advanced-Chart-Widget bietet Kerzen, Zeitintervalle, Indikatoren und Zeichenwerkzeuge. Es startet mit einem Kraken-Referenzmarkt zum Fusion-Paar; ein anderes TradingView-Symbol kann eingegeben werden. Nicht jedes Fusion-Paar ist dort verfügbar. Referenzkurse sind keine Fusion-Ausführungspreise; Orderbuch und Orderformular bleiben beim ausgewählten Fusion-Paar. Der externe Chart läuft isoliert, ohne Zugriff auf Dashboard-Daten. Internetzugang zu TradingView ist erforderlich.
+
+### Gespeicherte Zeichnungen und Vollbild
+
+Auf Fusion ist TradingView standardmäßig aktiv und kann per „Vollbild“ den Bildschirm füllen. Bei Browsern ohne nutzbare Vollbild-API wird der Browserinhalt ausgefüllt. „Vollbild verlassen“ bzw. Escape beendet die Ansicht.
+
+Für dauerhafte Zeichnungen im Dashboard den separaten Reiter **Zeichnungen · gespeichert** wählen: Trendlinien, horizontale Kursmarken, Rechtecke, Texte und Fibonacci-Zonen werden automatisch pro Fusion-Handelspaar auf dem Server im Datenverzeichnis `fusion-chart-drawings/` gespeichert. Kein TradingView-Konto nötig. Das unveränderte TradingView-Widget besitzt keine Schnittstelle, über die das Dashboard dessen interne Zeichnungen speichern könnte.
+
+Die Speicherung verwendet echte Zeit-/Preisanker, atomare Dateien und Versionsprüfung gegen Überschreiben durch andere Geräte. Bei einem Speicherfehler bleibt ein lokaler Entwurf; Wiederholung, Export und bewusstes Laden des Serverstands sind möglich. Vor dem Schließen auf „Zeichnungen auf dem Server gespeichert“ achten. Die Netzwerkübertragung wird auch beim Verlassen der Seite nach Möglichkeit abgeschlossen. Die vorhandenen Synology-Datensicherungen schließen diese Dateien ein.
+
+Der Zeichenchart nutzt TradingView Lightweight Charts™ (Copyright (с) 2025 TradingView, Inc., https://www.tradingview.com/). Apache-2.0-Lizenz und Herstellerhinweis liegen im Frontend unter `lightweight-charts-LICENSE.txt` bzw. `lightweight-charts-NOTICE.txt`. Es ist kein Ersatz für den vollständigen TradingView-Werkzeugkasten.
+
+### Prüfung historischer Portfolio-Spitzen
+
+Jahres- und Sechsmonatsverläufe werden auf isolierte große Sprünge geprüft. Solche Punkte bleiben bis zur Bestätigung aus der Kurve und ihren Extremwerten entfernt, mit sichtbaren Zeitlücken und einem Prüfhinweis unter dem Chart. Originalpunkte lassen sich zur Kontrolle ausdrücklich einblenden; Rohdaten werden niemals gelöscht oder durch erfundene Zwischenwerte ersetzt. Große erfasste Ein-/Auszahlungen und dauerhaft veränderte Niveaus werden nicht als isolierte Spitzen behandelt.
+
+Der Hintergrundabgleich bewertet historische Wallet-Bestände mit verfügbaren damaligen EUR-Schlusskursen. Tageskurse werden erst nach Ablauf ihres Tages berücksichtigt. Fehlende Wallet-Salden, historische Kurse oder Hebelbewertungen bleiben als Einschränkung sichtbar; unvollständige Teilbewertungen gelten nicht als bestätigter Gesamtwert. Ein Verdacht ist kein Beweis für einen Bitpanda-Fehler. Der Vergleich auf heutigem Kapitalstand bleibt eine rechnerisch angepasste Darstellung und darf nicht mit dem damaligen tatsächlichen Kontostand verwechselt werden.
+
+Ein-/Auszahlungspunkte starten ausgeblendet und lassen sich per Button einschalten. Buchungsliste, Korrekturen und Prüfdetails stehen unter dem Chart mit identischen Abständen.
+
+### Gewinnvorschau vor Ausführung
+
+Die Asset-Quote und das Fusion-Orderformular zeigen den geschätzten Gewinn/Verlust in Euro und Prozent bezogen auf anteilige Anschaffungskosten inklusive Kaufgebühren. Verkaufsgebühren werden nur einmal berücksichtigt. Bei Wertpapieren wird die bestehende KESt-Schätzung verwendet. Die Krypto-Vorschau folgt der ausdrücklich gewünschten Einstellung ohne zusätzlichen KESt-Abzug; das stellt keine Steuerfreiheit fest. Fehlende Kaufkosten oder Gebühren bleiben unbekannt, statt als null zu gelten. Bei Fusion dient der anteilige Einstand des gesamten Bitpanda-Bestands als Schätzung, nicht ein gesondert belegter Fusion-Einstand. Nicht-EUR-Paare erhalten ohne gesicherte EUR-Umrechnung keine Renditevorschau.
+
+Beim Kauf kann ein späterer Verkaufskurs als Szenario eingegeben werden. Das ist eine hypothetische Rendite für die neu gekaufte Menge, kein bereits realisierter Gewinn. Maßgeblich bleibt die endgültige Bitpanda-Abrechnung.

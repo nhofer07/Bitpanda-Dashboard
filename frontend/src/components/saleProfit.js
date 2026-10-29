@@ -21,8 +21,9 @@ export function saleProfit({ quote, held, category }) {
   // economic costs but do not reduce the standard Austrian taxable gain.
   const defaultTaxBasis = category === 'crypto' ? totalCost : ['stock', 'stocks', 'etf'].includes(category) ? basis : null;
   const taxBasis = share != null && defaultTaxBasis != null ? share * defaultTaxBasis : null;
-  const estimatedTax = gross != null && taxBasis != null ? Math.round(Math.max(0, gross - taxBasis) * .275 * 100) / 100 : null;
+  const estimatedTax = category === 'crypto' ? 0 : gross != null && taxBasis != null ? Math.round(Math.max(0, gross - taxBasis) * .275 * 100) / 100 : null;
   const netProceeds = proceeds != null && estimatedTax != null ? proceeds - estimatedTax : null;
   const netProfit = netProceeds != null && acquisition != null ? netProceeds - acquisition : null;
-  return { quantity, gross, fee, proceeds, acquisition, taxBasis, estimatedTax, netProceeds, netProfit };
+  const netProfitPercent = netProfit != null && acquisition > 0 ? netProfit / acquisition * 100 : null;
+  return { quantity, gross, fee, proceeds, acquisition, taxBasis, estimatedTax, netProceeds, netProfit, netProfitPercent };
 }

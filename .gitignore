@@ -32,3 +32,5 @@ test-results/
 
 chatgpt-auth.json
 chatgpt-auth.json.tmp-*
+
+fusion-chart-drawings/

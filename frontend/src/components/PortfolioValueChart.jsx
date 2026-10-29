@@ -1,3 +1,4 @@
+import { suspiciousPortfolioPoints } from "../../../backend/historical-portfolio-audit.js";
 import { reconcilePortfolioHistory, comparePortfolioHistory } from "./reconcilePortfolioHistory.js";
 import { portfolioHistoryCashflows } from "./portfolioHistoryCashflows.js";
 import { API_PORTFOLIO_RANGES, usePortfolioHistory } from "./usePortfolioHistory.js";
@@ -29,10 +30,12 @@ export default function PortfolioValueChart({ snapshots = [], currentValue, load
       return true;
     }
   });
-  const [showCashflows, setShowCashflows] = useState(true);
+  const [showCashflows, setShowCashflows] = useState(false);
   const api = usePortfolioHistory(range, loadedAt, initialHistory);
-  const comparisonRange = range === "1m" ? "6m" : range === "6m" ? "1m" : null;
+  const comparisonRange = range === "1m" ? "6m" : range === "6m" ? "1m" : range === "1y" ? "6m" : null;
   const comparisonApi = usePortfolioHistory(comparisonRange, loadedAt);
+  const [audit, setAudit] = useState(null);
+  const [showUnverified, setShowUnverified] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [selectedCashflow, setSelectedCashflow] = useState(null);
   useEffect(() => {
@@ -48,7 +51,27 @@ export default function PortfolioValueChart({ snapshots = [], currentValue, load
   const reconciliation = useMemo(() => usingApi
     ? reconcilePortfolioHistory(api.history.snapshots.map(point => ({ time: Date.parse(point.createdAt), value: point.totalValue })), localPoints, cashflows, api.history.loadedAt)
     : { points: awaitingApi ? [] : localPoints, corrections: [] }, [usingApi, awaitingApi, api.history, localPoints, cashflows]);
-  const points = reconciliation.points;
+  useEffect(() => {
+    setShowUnverified(false);
+    if (!usingApi || !['1y', '6m'].includes(range)) { setAudit(null); return; }
+    let active = true, timer, attempts = 0; const controller = new AbortController();
+    async function loadAudit() {
+      try {
+        const response = await fetch(`/api/portfolio-history-audit?range=${range}`, { signal: controller.signal }); const result = await response.json();
+        if (!response.ok || !Array.isArray(result.checks)) throw new Error('Historischer Abgleich derzeit nicht verfügbar.');
+        if (!active) return; setAudit({ ...result, range });
+        if (result.pending && ++attempts < 30) timer = setTimeout(loadAudit, 4000);
+      } catch (e) { if (active) setAudit({ range, checks: [], pending: false, error: e.message }); }
+    }
+    setAudit({ range, checks: [], pending: true }); void loadAudit();
+    return () => { active = false; controller.abort(); clearTimeout(timer); };
+  }, [usingApi, range, api.history?.loadedAt]);
+  const suspected = useMemo(() => usingApi ? suspiciousPortfolioPoints(reconciliation.points, cashflows).filter(p => !reconciliation.points.find(point => point.time === p.time)?.correction) : [], [usingApi, reconciliation.points, cashflows]);
+  const reviews = suspected.map(p => ({ ...p, ...(audit?.range === range ? audit.checks.find(c => c.time === p.time) : null) }));
+  const withheld = reviews.filter(p => p.status !== 'confirmed');
+  const excludedTimes = new Set(showUnverified ? [] : withheld.map(p => p.time));
+  let gap = false;
+  const points = reconciliation.points.flatMap(point => { if (excludedTimes.has(point.time)) { gap = true; return []; } const kept = gap ? { ...point, gapBefore: true } : point; gap = false; return [kept]; });
   const historyComparison = useMemo(() => usingApi && comparisonApi.history
     ? comparePortfolioHistory(api.history.snapshots.map(point => ({ time: Date.parse(point.createdAt), value: point.totalValue })), comparisonApi.history.snapshots.map(point => ({ time: Date.parse(point.createdAt), value: point.totalValue })))
     : null, [usingApi, api.history, comparisonApi.history]);
@@ -116,7 +139,7 @@ export default function PortfolioValueChart({ snapshots = [], currentValue, load
   const last = visible[visible.length - 1];
   const result = portfolioPeriodResult(visible, calculationFlows);
   const change = result.profit;
-  const reportedPercent = usingApi && !reconciliation.corrections.length ? api.history.reportedReturnPercent : null;
+  const reportedPercent = usingApi && !reconciliation.corrections.length && !withheld.length ? api.history.reportedReturnPercent : null;
   const changePercent = reportedPercent ?? result.percent;
   const performancePositive = (changePercent ?? change) >= 0;
   const curveChange = displayPoints.at(-1).adjustedValue - displayPoints[0].adjustedValue;
@@ -126,6 +149,7 @@ export default function PortfolioValueChart({ snapshots = [], currentValue, load
   const valueLabel = uniformValue ? "Vergleichswert auf heutigem Kapitalstand" : "Portfoliowert";
   const selectedPoint = coordinates[safeIndex];
   const line = coordinates.map(point => `${point.x},${point.y}`).join(" ");
+  const segments = []; for (const point of coordinates) { if (!segments.length || point.gapBefore) segments.push([]); segments.at(-1).push(point); }
   const cashflowMarkers = (showCashflows ? visibleCashflows : []).map(item => ({ ...item, ...coordinateAtTime(item.chartTime ?? item.time, coordinates) }));
   function selectNearestPoint(event) {
     if (visible.length < 2) return;
@@ -160,14 +184,14 @@ export default function PortfolioValueChart({ snapshots = [], currentValue, load
       <div className="chart-context"><DataQuality kind={usingApi ? api.history.stale ? "stale" : "reported" : "calculated"}>{usingApi ? api.history.stale ? "Bitpanda · letzter Abruf" : "Bitpanda" : "Gespeicherter Verlauf"}</DataQuality><span className="portfolio-mode-label">{uniformValue ? "Vergleich auf heutigem Kapitalstand" : "Tatsächliche Werte"}</span><details><summary>Darstellung & Berechnung</summary><p>{uniformValue ? "Ein-/Auszahlungen bereinigt: Frühere Werte inklusive Hoch und Tief sind auf den heutigen Kapitalstand angepasst." : "Tatsächliche Werte: Kurve, Skala sowie Hoch und Tief zeigen die damaligen Eurobeträge inklusive Ein- und Auszahlungen."}</p>{reportedPercent != null && <p>Die Prozent-Rendite wird unverändert von Bitpanda übernommen. Das Euro-Ergebnis und die bereinigte Kurve verwenden die Ein-/Auszahlungen und Buchungszuordnungen deines Dashboards; diese Berechnung kann von Bitpandas Rendite abweichen.</p>}{usingApi && <p>Original-Messpunkte von Bitpanda · letzter Zeitabschnitt: {pointTime(api.history.lastPointAt)}. Buchungen werden ihrem Bitpanda-Zeitabschnitt zugeordnet; die angezeigte Buchungszeit bleibt unverändert. Der letzte Messpunkt kann zeitlich hinter dem aktuellen Kontostand liegen.</p>}{!usingApi && <p>Dieser Verlauf stammt aus den gespeicherten Kontoständen des Dashboards.</p>}{result.hasCashflows && reportedPercent == null && <p>Prozent-Rendite nicht verfügbar: Für Zahlungsbewegungen fehlen Bewertungen unmittelbar vor der Buchung. Das bereinigte Ergebnis in Euro bleibt sichtbar.</p>}</details></div>
       {api.loading && range !== 'all' && <p className="source-note" role="status">Bitpanda-Verlauf wird aktualisiert …</p>}
       {(api.error || (usingApi && api.history.stale)) && range !== 'all' && <div className="portfolio-history-status" role="status"><span>{usingApi ? 'Der Bitpanda-Verlauf konnte nicht aktuell geladen werden. Angezeigt wird der letzte verfügbare Stand.' : 'Bitpanda-Verlauf nicht verfügbar. Angezeigt werden gespeicherte Kontostände.'}</span><button className="secondary-button" onClick={api.retry}>Erneut versuchen</button></div>}
-      {reconciliation.corrections.length > 0 && <details className="source-note portfolio-history-corrections"><summary>{reconciliation.corrections.length} {reconciliation.corrections.length === 1 ? "Bitpanda-Messpunkt mit gespeicherten Kontoständen korrigiert" : "Bitpanda-Messpunkte mit gespeicherten Kontoständen korrigiert"}</summary><p>Isolierte Abweichungen wurden durch zeitlich passende, übereinstimmende Kontostände ersetzt. Die Bitpanda-Prozentrendite wird für diesen Verlauf nicht übernommen. Originaldaten bleiben erhalten.</p><ul>{reconciliation.corrections.map(item => <li key={item.time}>{pointTime(item.time)} · Original: {money(item.originalValue)} → Kontostand: {money(item.referenceValue)} vom {pointTime(item.referenceTime)}</li>)}</ul></details>}
+
       <div className="portfolio-chart-wrap">
         <div className="portfolio-chart-y-labels"><span title={`${valueLabel} am Kurvenhoch · ${pointTime(maximumPoint.time)}`}>{money(displayedValue(maximumPoint))}</span><span title={`${valueLabel} am Kurventief · ${pointTime(minimumPoint.time)}`}>{money(displayedValue(minimumPoint))}</span></div>
         <svg className="portfolio-value-chart" viewBox="0 0 1000 270" role="img" aria-label={`${uniformValue ? "Bereinigter" : "Tatsächlicher"} Portfolioverlauf von ${money(displayedValue(displayPoints[0]))} bis ${money(displayedValue(displayPoints.at(-1)))}`} preserveAspectRatio="none" onPointerMove={selectNearestPoint} onPointerDown={selectNearestPoint} onPointerLeave={() => { setSelectedIndex(-1); setSelectedCashflow(null); }}>
           <defs><linearGradient id="portfolioArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={curveChange < 0 ? "#ff6262" : "#00e08f"} stopOpacity="0.30" /><stop offset="100%" stopColor={curveChange < 0 ? "#ff6262" : "#00e08f"} stopOpacity="0" /></linearGradient></defs>
           {[40, 110, 180, 250].map(y => <line key={y} x1="0" x2="1000" y1={y} y2={y} className="portfolio-chart-gridline" />)}
-          {visible.length > 1 && <polygon points={`0,250 ${line} 1000,250`} fill="url(#portfolioArea)" />}
-          {visible.length > 1 ? <polyline points={line} className={`portfolio-chart-line ${curveChange < 0 ? "negative-line" : "positive-line"}`} /> : <line x1="0" x2="1000" y1={coordinates[0].y} y2={coordinates[0].y} className={`portfolio-chart-line single ${curveChange < 0 ? "negative-line" : "positive-line"}`} />}
+          {visible.length > 1 && segments.length === 1 && <polygon points={`0,250 ${line} 1000,250`} fill="url(#portfolioArea)" />}
+          {visible.length > 1 ? segments.map((segment, index) => segment.length > 1 ? <polyline key={index} points={segment.map(p => `${p.x},${p.y}`).join(" ")} className={`portfolio-chart-line ${curveChange < 0 ? "negative-line" : "positive-line"}`} /> : <circle key={index} cx={segment[0].x} cy={segment[0].y} r="3" className="portfolio-chart-dot" />) : <line x1="0" x2="1000" y1={coordinates[0].y} y2={coordinates[0].y} className={`portfolio-chart-line single ${curveChange < 0 ? "negative-line" : "positive-line"}`} />}
           <line x1={selectedPoint.x} x2={selectedPoint.x} y1="35" y2="250" className="portfolio-chart-cursor" />
           <circle cx={selectedPoint.x} cy={selectedPoint.y} r="7" className={`portfolio-chart-dot ${curveChange < 0 ? "negative" : "positive"}`} />
           {cashflowMarkers.map((item, index) => <circle key={`${item.id || "cashflow"}-${item.time}-${index}`} cx={item.x} cy={item.y} r="8" className={`portfolio-cashflow-dot ${item.signedAmount > 0 ? "deposit" : "withdrawal"}`} tabIndex="0" role="button" aria-label={`${cashflowName(item.classification)} ${money(item.value)} · ${pointTime(item.time)}`} onFocus={() => setSelectedCashflow(item)} onKeyDown={event => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); setSelectedCashflow(item); } }} onPointerEnter={event => { event.stopPropagation(); setSelectedCashflow(item); }} onPointerMove={event => event.stopPropagation()} onPointerDown={event => { event.stopPropagation(); setSelectedCashflow(item); }} />)}
@@ -176,7 +200,9 @@ export default function PortfolioValueChart({ snapshots = [], currentValue, load
       {selectedCashflow ? <div className={`portfolio-chart-selection cashflow-selection ${selectedCashflow.signedAmount > 0 ? "positive" : "negative"}`}><strong>{cashflowName(selectedCashflow.classification)} {selectedCashflow.signedAmount < 0 ? "−" : "+"}{money(selectedCashflow.value)}</strong><span>{pointTime(selectedCashflow.time)}</span></div> : <div className="portfolio-chart-selection"><strong>{money(displayedValue(displayPoints[safeIndex]))}</strong><span>{selected.correction ? `${valueLabel} · mit gespeichertem Kontostand korrigiert (Original: ${money(selected.correction.originalValue)})` : selected.reconstructed ? `${valueLabel} · rekonstruiert (geschätzt)` : valueLabel} · {pointTime(selected.time)}</span></div>}
       {visible.length > 1 ? <input className="portfolio-chart-slider" type="range" min="0" max={visible.length - 1} value={safeIndex} onChange={event => setSelectedIndex(Number(event.target.value))} aria-label="Datenpunkt im Portfolioverlauf ansehen" /> : <p className="portfolio-chart-empty">Die Aufzeichnung beginnt mit diesem Stand. Nach den nächsten Aktualisierungen entsteht hier der Verlauf.</p>}
       <div className="portfolio-chart-axis"><span>{pointTime(first.time)}</span><span>{pointTime(last.time)}</span></div>
-      {showCashflows && visibleCashflows.length > 0 && <details className="portfolio-cashflow-list"><summary>Ein- & Auszahlungen · {visibleCashflows.length} {visibleCashflows.length === 1 ? "Buchung" : "Buchungen"}</summary><ul>{visibleCashflows.map((flow, index) => <li key={`${flow.id}-${index}`}><button type="button" className="portfolio-cashflow-entry" onClick={() => setSelectedCashflow(flow)}><span>{cashflowName(flow.classification)}<small>{pointTime(flow.time)}</small></span><strong className={flow.signedAmount > 0 ? 'positive' : 'negative'}>{flow.signedAmount > 0 ? '+' : '−'}{money(flow.value)}</strong></button></li>)}</ul></details>}
+      {visibleCashflows.length > 0 && <details className="portfolio-cashflow-list"><summary>Ein- & Auszahlungen · {visibleCashflows.length} {visibleCashflows.length === 1 ? "Buchung" : "Buchungen"}</summary><ul>{visibleCashflows.map((flow, index) => <li key={`${flow.id}-${index}`}><button type="button" className="portfolio-cashflow-entry" onClick={() => setSelectedCashflow(flow)}><span>{cashflowName(flow.classification)}<small>{pointTime(flow.time)}</small></span><strong className={flow.signedAmount > 0 ? 'positive' : 'negative'}>{flow.signedAmount > 0 ? '+' : '−'}{money(flow.value)}</strong></button></li>)}</ul></details>}
+      {reconciliation.corrections.length > 0 && <details className="source-note portfolio-history-corrections"><summary>{reconciliation.corrections.length} {reconciliation.corrections.length === 1 ? "Bitpanda-Messpunkt mit gespeicherten Kontoständen korrigiert" : "Bitpanda-Messpunkte mit gespeicherten Kontoständen korrigiert"}</summary><p>Isolierte Abweichungen wurden durch zeitlich passende, übereinstimmende Kontostände ersetzt. Die Bitpanda-Prozentrendite wird für diesen Verlauf nicht übernommen. Originaldaten bleiben erhalten.</p><ul>{reconciliation.corrections.map(item => <li key={item.time}>{pointTime(item.time)} · Original: {money(item.originalValue)} → Kontostand: {money(item.referenceValue)} vom {pointTime(item.referenceTime)}</li>)}</ul></details>}
+      {withheld.length > 0 && <details className="source-note portfolio-history-audit"><summary>{withheld.length} auffällige {withheld.length === 1 ? "Einzelspitze" : "Einzelspitzen"} {showUnverified ? "im Original eingeblendet" : "bis zur Bestätigung ausgeblendet"}{audit?.range === range && audit.pending ? " · Bestandsabgleich läuft …" : ""}</summary><p>Isolierte große Sprünge werden auf historische Wallet-Bestände und verfügbare EUR-Schlusskurse geprüft. Ausgeblendete Zeitabschnitte bleiben als Lücke erhalten; es werden keine Ersatzwerte erfunden. Ein Verdacht allein beweist keinen Datenfehler. Vergleichswerte sind historische Schätzungen, keine damaligen Ausführungspreise.</p><ul>{withheld.map(item => <li key={item.time}>{pointTime(item.time)} · Bitpanda: {money(item.originalValue)}{item.reconstructedValue != null ? ` · Buchungsbestände × historische Kurse: ca. ${money(item.reconstructedValue)}` : item.partialValue > 0 ? ` · Bewerteter Teilbestand: ca. ${money(item.partialValue)} (unvollständig)` : ''} · {item.reason || audit?.error || (audit?.pending ? 'Historische Prüfung noch nicht abgeschlossen.' : 'Keine ausreichenden unabhängigen Daten für eine Bestätigung.')}</li>)}</ul><button className="secondary-button" onClick={() => setShowUnverified(v => !v)}>{showUnverified ? "Auffällige Originalpunkte ausblenden" : "Auffällige Originalpunkte trotzdem anzeigen"}</button></details>}
       {usingApi && comparisonRange && <details className="source-note portfolio-history-comparison"><summary>{historyComparison ? `${historyComparison.discrepancies.length} Abweichungen beim Vergleich mit ${comparisonRange === "6m" ? "6 Monaten" : "1 Monat"} · ${historyComparison.compared} gemeinsame Schlusswerte` : comparisonApi.error ? "Vergleich der Zeiträume derzeit nicht verfügbar" : "Vergleich der Zeiträume wird geladen …"}</summary><p>Verglichen werden nur Messpunkte mit demselben Schlusszeitpunkt. Spitzen innerhalb eines Tages sind durch einen Tageswert allein weder bestätigt noch widerlegt. Abweichende Originalwerte bleiben erhalten; ein automatischer Ersatz benötigt passende gespeicherte Kontostände.</p>{comparisonApi.history?.stale && <p>Der Vergleich verwendet den letzten verfügbaren Abruf.</p>}{historyComparison?.discrepancies.length > 0 && <ul>{historyComparison.discrepancies.map(item => <li key={item.time}>Schlusszeit {pointTime(item.closeTime)} · Dieser Zeitraum: {money(item.value)} · Vergleich: {money(item.comparisonValue)}</li>)}</ul>}</details>}
     </section>
   );

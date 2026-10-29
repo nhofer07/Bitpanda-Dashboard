@@ -7,11 +7,11 @@ test('partial security sale includes buy and sell fees and taxes gross gain with
  const r = saleProfit({quote, held, category:'stock'});
  assert.equal(r.gross,600); assert.equal(r.proceeds,595);
  assert.equal(r.acquisition,505); assert.equal(r.taxBasis,500);
- assert.equal(r.estimatedTax,27.5); assert.equal(r.netProceeds,567.5); assert.equal(r.netProfit,62.5);
+ assert.equal(r.netProfitPercent,62.5/505*100); assert.equal(r.estimatedTax,27.5); assert.equal(r.netProceeds,567.5); assert.equal(r.netProfit,62.5);
 });
-test('crypto includes acquisition fees in estimated tax basis', () => {
+test('crypto preview keeps purchase fees but follows the explicit no-withholding setting', () => {
  const r=saleProfit({quote,held,category:'crypto'});
- assert.equal(r.taxBasis,505); assert.equal(r.estimatedTax,26.13); assert.equal(r.netProfit,63.870000000000005);
+ assert.equal(r.taxBasis,505); assert.equal(r.estimatedTax,0); assert.equal(r.netProfit,90); assert.equal(r.netProfitPercent,90/505*100);
 });
 test('a loss does not create an assumed tax refund', () => {
  const r=saleProfit({quote:{quote:{quantity:'5',price:'90',fee:'5'}},held,category:'etf'});
