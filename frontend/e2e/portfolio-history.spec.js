@@ -159,7 +159,7 @@ for (const width of [390, 1440]) test(`period switches never flash saved snapsho
   await expect(chart.locator('.portfolio-chart-pending')).toHaveCount(0);
 });
 
-test('yearly isolated spikes stay out of extrema and leave gaps until independently confirmed', async ({ page }) => {
+test('yearly isolated spikes stay out of extrema while the remaining curve stays continuous', async ({ page }) => {
   await mockApp(page); let confirmed = false;
   const snapshots = [3400, 3390, 4700, 3410, 3420].map((totalValue, i) => ({ createdAt: new Date(Date.parse('2026-01-01T00:00:00Z') + i * 2 * 86400000).toISOString(), totalValue }));
   await page.route('**/api/portfolio-history*', route => { const range = new URL(route.request().url()).searchParams.get('range'); return route.fulfill({ json: range === '1y' ? { ...history('1y'), snapshots, firstPointAt: snapshots[0].createdAt, lastPointAt: snapshots.at(-1).createdAt } : history(range) }); });
@@ -169,7 +169,9 @@ test('yearly isolated spikes stay out of extrema and leave gaps until independen
   await chart.getByRole('button', { name: '1 Jahr', exact: true }).click();
   await expect(chart.locator('.portfolio-history-audit')).toContainText('bis zur Bestätigung ausgeblendet');
   await expect(chart.locator('.portfolio-chart-y-labels')).not.toContainText('4.700');
-  await expect(chart.locator('polyline')).toHaveCount(2);
+  await expect(chart.locator('polyline')).toHaveCount(1);
+  await expect(chart.locator('.portfolio-chart-gap')).toHaveCount(0);
+  expect((await chart.locator('polyline').getAttribute('points')).trim().split(/\s+/)).toHaveLength(4);
   const top = await chart.locator('.portfolio-history-audit').boundingBox(), plot = await chart.locator('.portfolio-chart-wrap').boundingBox(); expect(top.y).toBeGreaterThan(plot.y);
   confirmed = true; await page.clock.fastForward(4100);
   await expect(chart.locator('.portfolio-history-audit')).toHaveCount(0); await expect(chart.locator('.portfolio-chart-y-labels')).toContainText('4.700');
