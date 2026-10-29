@@ -1,6 +1,6 @@
 import AdaptiveTable from "./AdaptiveTable.jsx";
 import DataNote from "./DataNote.jsx";
-import { formatCurrency, formatNumber, formatPercent, formatDateTime } from "./formatters.js";
+import { formatPrice, formatCurrency, formatNumber, formatPercent, formatDateTime } from "./formatters.js";
 import DataQuality from "./DataQuality.jsx";
 import MarketHistoryChart from "./MarketHistoryChart.jsx";
 
@@ -54,7 +54,7 @@ export default function AssetDetailView({ asset, onBack, embedded = false, child
       <div className="stats-grid">
         <Metric title="Aktueller Wert" value={asset.currentValue == null ? "–" : formatCurrency(asset.currentValue)} secondary={<DataQuality kind={asset.currentValue == null ? "unknown" : asset.priceSource === "Bitpanda Portfolio API" ? "reported" : "estimated"} />} />
         <Metric title="Bestand" value={formatNumber(asset.currentQuantity)} />
-        <Metric title="Aktueller Kurs" value={asset.currentPrice == null ? "-" : formatCurrency(asset.currentPrice)} />
+        <Metric title="Aktueller Kurs" value={asset.currentPrice == null ? "-" : formatPrice(asset.currentPrice)} />
         <Metric
           title="Unrealisierter Gewinn / Verlust"
           value={unrealizedProfit == null ? "Nicht verfügbar" : `${formatCurrency(unrealizedProfit)} (${formatPercent(asset.unrealizedProfitPercent)})`}
@@ -65,7 +65,7 @@ export default function AssetDetailView({ asset, onBack, embedded = false, child
           value={formatCurrency(realizedProfit)}
           tone={realizedProfit >= 0 ? "positive" : "negative"}
         />
-        <Metric title="Ø Einstieg" value={asset.averageRemainingCost == null ? "–" : formatCurrency(asset.averageRemainingCost)} secondary={<DataQuality kind={asset.averageRemainingCost == null ? "unknown" : asset.averageEntrySource === "Bitpanda Portfolio API" ? "reported" : "estimated"} />} />
+        <Metric title="Ø Einstieg" value={asset.averageRemainingCost == null ? "–" : formatPrice(asset.averageRemainingCost)} secondary={<DataQuality kind={asset.averageRemainingCost == null ? "unknown" : asset.averageEntrySource === "Bitpanda Portfolio API" ? "reported" : "estimated"} />} />
       </div>
 
       {!embedded && <MarketHistoryChart asset={{ symbol: asset.assetKey || asset.name, name: assetTitle(asset), category: asset.category || "other", chartSource: "bitpanda" }} trades={asset.trades || []} />}
@@ -124,7 +124,7 @@ export default function AssetDetailView({ asset, onBack, embedded = false, child
                   </td>
                   <td>{formatNumber(trade.quantity)}</td>
                   <td>{formatCurrency(trade.fiat)}</td>
-                  <td>{formatCurrency(trade.price)}</td>
+                  <td>{formatPrice(trade.price)}</td>
                   <td>{trade.tradingFee == null && trade.financingFee == null ? "–" : formatCurrency(Number(trade.tradingFee || 0) + Number(trade.financingFee || 0))}</td>
                   <td>
                     {trade.type !== "sell" || trade.estimatedTax == null || trade.taxSource === "unavailable" ? "-" : <>

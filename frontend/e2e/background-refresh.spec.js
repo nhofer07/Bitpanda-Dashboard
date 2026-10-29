@@ -103,3 +103,22 @@ test('automatic refresh starts at the next full minute and does not relabel old 
   await expect(page.locator('.data-freshness time')).toHaveAttribute('datetime','2026-10-26T12:01:00Z');
   await expect(page.locator('.data-freshness')).toContainText('Daten aktuell');
 });
+
+test('initial cached data is visible during rebuilding and transactions are not fetched twice',async({page})=>{
+ await page.addInitScript(()=>{
+  window.testStreams=[];
+  window.EventSource=class extends EventTarget{constructor(){super();window.testStreams.push(this);}close(){this.closed=true;}};
+ });
+ const state=await mockApp(page);let transactions=0;
+ page.on('request',request=>{if(new URL(request.url()).pathname==='/api/transactions')transactions++;});
+ state.dashboard={...state.dashboard,loadedAt:'2026-10-26T11:58:00Z',cache:{status:'stale',updating:true}};
+ await page.goto('/');
+ await expect(page.locator('.portfolio-balance h2')).toContainText('4.150,00');
+ await expect(page.locator('.data-freshness')).toContainText('Aktualisiere …');
+ await expect(page.locator('.data-freshness time')).toHaveAttribute('datetime','2026-10-26T11:58:00Z');
+ expect(transactions).toBe(0);
+ state.dashboard={...state.dashboard,loadedAt:at(12),cache:{status:'refresh'},portfolio:{...state.dashboard.portfolio,totalValue:5000}};
+ await page.evaluate(()=>window.testStreams.filter(s=>!s.closed).forEach(s=>s.dispatchEvent(new MessageEvent('dashboard',{data:'{}'}))));
+ await expect(page.locator('.portfolio-balance h2')).toContainText('5.000,00');
+ await expect(page.locator('.data-freshness')).toContainText('Daten aktuell');
+});

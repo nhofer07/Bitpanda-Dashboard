@@ -1,3 +1,4 @@
+import { createReadDeduplicator } from "./read-deduplication.js";
 import { createDashboardEvents } from "./dashboard-events.js";
 import { PORTFOLIO_TIMEFRAMES, normalizePortfolioHistory, createPortfolioHistoryLoader } from "./portfolio-api-history.js";
 import { catalogCategory, enrichTradeAssetIdentity } from "./asset-identity.js";
@@ -154,7 +155,13 @@ app.use((req, res, next) => {
   next();
 });
 app.get("/health", (req, res) => res.json({ status: "ok" }));
-app.use(express.static(path.join(__dirname, "..", "frontend", "dist")));
+app.use(express.static(path.join(__dirname, "..", "frontend", "dist"), {
+  setHeaders(res, file) {
+    // Vite fingerprints assets. Cache those across reloads; always revalidate
+    // HTML and manifests so a deployment immediately points to the new bundle.
+    res.setHeader("Cache-Control", /[-][A-Za-z0-9_-]{8,}\.[a-z0-9]+$/i.test(file) ? "public, max-age=31536000, immutable" : "no-cache");
+  }
+}));
 app.use((req, res, next) => {
   if (req.url === "/api") req.url = "/";
   else if (req.url.startsWith("/api/")) req.url = req.url.slice(4);
@@ -328,10 +335,16 @@ function uniqueById(items) {
   return Array.from(map.values());
 }
 
-async function fetchPaginated(endpoint, params = {}) {
+const sharedRead = createReadDeduplicator();
+function fetchPaginated(endpoint, params = {}) {
+  const key = JSON.stringify([settingsRevision, 'legacy', endpoint, Object.entries(params).sort()]);
+  return sharedRead(key, () => fetchPaginatedUnshared(endpoint, params));
+}
+async function fetchPaginatedUnshared(endpoint, params = {}) {
   const pageSize = 100;
   let cursor = "";
   const allItems = [];
+  const seenCursors = new Set();
 
   while (true) {
     const url = new URL(`${BASE_URL}${endpoint}`);
@@ -348,6 +361,7 @@ async function fetchPaginated(endpoint, params = {}) {
     }
 
     const response = await fetch(url, {
+      signal: AbortSignal.timeout(15_000),
       headers: {
         "X-Api-Key": apiKey,
         Accept: "application/json"
@@ -374,19 +388,26 @@ async function fetchPaginated(endpoint, params = {}) {
     }
 
     cursor = decodeURIComponent(nextCursor);
+    if (seenCursors.has(cursor)) throw new Error("Bitpanda wiederholt eine Historienseite; Abruf abgebrochen.");
+    seenCursors.add(cursor);
   }
 
   return uniqueById(allItems);
 }
 
-async function publicApiRequest(endpoint, { method = "GET", params = {}, body, timeoutMs } = {}) {
+function publicApiRequest(endpoint, options = {}) {
+  if (options.method && options.method !== 'GET') return publicApiRequestUnshared(endpoint, options);
+  const key = JSON.stringify([settingsRevision, 'public', endpoint, Object.entries(options.params || {}).sort(), options.timeoutMs]);
+  return sharedRead(key, () => publicApiRequestUnshared(endpoint, options));
+}
+async function publicApiRequestUnshared(endpoint, { method = "GET", params = {}, body, timeoutMs } = {}) {
   const url = new URL(`${PUBLIC_BASE_URL}${endpoint}`);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
   }
   const response = await fetch(url, {
     method,
-    ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+    ...((timeoutMs || method === "GET") ? { signal: AbortSignal.timeout(timeoutMs || 15_000) } : {}),
     headers: {
       "x-api-key": apiKey,
       Accept: "application/json",
@@ -474,6 +495,7 @@ async function fetchTickerPage(params = {}) {
   }
 
   const response = await fetch(url, {
+    signal: AbortSignal.timeout(15_000),
     headers: {
       "X-Api-Key": apiKey,
       Accept: "application/json"
@@ -872,6 +894,7 @@ async function fetchLeveragePositions() {
   // simply means there are no leverage positions available to this dashboard.
   try {
     const response = await fetch(`${BASE_URL}/leverage/positions`, {
+      signal: AbortSignal.timeout(15_000),
       headers: { "X-Api-Key": apiKey, Accept: "application/json" }
     });
     if (!response.ok) return Object.assign([], { status: { available: false, message: `Aktuelle Hebelpositionen sind über deinen API-Key derzeit nicht verfügbar. Historische Hebelbuchungen sind im Buchungsverlauf sichtbar.` } });
@@ -1217,14 +1240,21 @@ function compactPortfolioSnapshots(snapshots, now = Date.now()) {
 }
 
 async function buildDashboardData(previousCache = null) {
-  const [transactions, dividends, leveragePositions] = await Promise.all([
-    fetchWantedFiatMovements(),
-    fetchDividendMovements(),
-    fetchLeveragePositions()
+  const transactionsRequest = fetchWantedFiatMovements();
+  const custodyRequest = fetchCryptoWalletTransactions();
+  const walletRequests = Promise.allSettled([
+    fetchFiatWalletBalances(),
+    Promise.all([fetchWalletBalances(), custodyRequest, fetchReservedCryptoTransactions()])
+  ]);
+  const apiHistoryRequest = portfolioHistoryLoader.load("DAY").catch(() => ({ available: false, warning: "Bitpanda-Portfoliohistorie ist derzeit nicht verfügbar." }));
+  const [transactions, dividends, leveragePositions, profitLossResult, walletResults, portfolioApiHistory] = await Promise.all([
+    transactionsRequest, fetchDividendMovements(), fetchLeveragePositions(),
+    transactionsRequest.then(transactions => fetchProfitLoss(transactions, { includeAccountInputs: true, financingRequest: custodyRequest })),
+    walletRequests, apiHistoryRequest
   ]);
   // Bitpanda flags recurring-plan deposits, but not always the buy that follows.
   // Pass those deposits along so the profit calculation can identify the matching buy.
-  const { accountInputs, ...profitLoss } = await fetchProfitLoss(transactions, { includeAccountInputs: true });
+  const { accountInputs, ...profitLoss } = profitLossResult;
   const fiatPeriods = calculateFiatPeriods(transactions, dividends);
   let fiatWallets = [];
   let openPositions = profitLoss.openPositions || [];
@@ -1241,18 +1271,16 @@ async function buildDashboardData(previousCache = null) {
   let liquidBalanceError = null;
 
   try {
-    fiatWallets = await fetchFiatWalletBalances();
+    if (walletResults[0].status === "rejected") throw walletResults[0].reason;
+    fiatWallets = walletResults[0].value;
   } catch (error) {
     liquidBalanceError = error.message;
     console.error(error);
   }
 
   try {
-    const [loadedWalletBalances, loadedCustodyTransactions, loadedReservedTransactions] = await Promise.all([
-      fetchWalletBalances(),
-      fetchCryptoWalletTransactions(),
-      fetchReservedCryptoTransactions()
-    ]);
+    if (walletResults[1].status === "rejected") throw walletResults[1].reason;
+    const [loadedWalletBalances, loadedCustodyTransactions, loadedReservedTransactions] = walletResults[1].value;
     custodyTransactions = loadedCustodyTransactions;
     reservedTransactions = loadedReservedTransactions;
     walletBalances = loadedWalletBalances;
@@ -1346,15 +1374,14 @@ async function buildDashboardData(previousCache = null) {
     fiatWallets,
     snapshots: []
   };
-  try { dashboardData.portfolioApiHistory = await portfolioHistoryLoader.load("DAY"); }
-  catch { dashboardData.portfolioApiHistory = { available: false, warning: "Bitpanda-Portfoliohistorie ist derzeit nicht verfügbar." }; }
+  dashboardData.portfolioApiHistory = portfolioApiHistory;
   dashboardData.portfolioHistoryWarning = portfolioSnapshotIssue(dashboardData);
   dashboardData.snapshots = appendPortfolioSnapshot(previousCache, dashboardData);
 
   return dashboardData;
 }
 
-async function getDashboardData({ forceRefresh = false } = {}) {
+async function getDashboardData({ forceRefresh = false, allowStale = false } = {}) {
   const cachedRaw = await readDashboardCache(DASHBOARD_CACHE_FILE);
   const cached = ensurePortfolioReturnFields(cachedRaw);
   if (cached) {
@@ -1364,7 +1391,7 @@ async function getDashboardData({ forceRefresh = false } = {}) {
   }
   const cachedAt = cached?.loadedAt ? new Date(cached.loadedAt).getTime() : 0;
 
-  if (!forceRefresh && cached && cached.calculationVersion === DASHBOARD_CALCULATION_VERSION && Date.now() - cachedAt < DASHBOARD_CACHE_MS) {
+  if (!forceRefresh && cached && cached.calculationVersion === DASHBOARD_CALCULATION_VERSION && Date.now() - cachedAt < (allowStale ? BACKGROUND_REFRESH_MS : DASHBOARD_CACHE_MS)) {
     return {
       ...cached,
       cache: {
@@ -1389,8 +1416,19 @@ async function getDashboardData({ forceRefresh = false } = {}) {
     const currentRefresh = dashboardRefreshPromise;
     currentRefresh.then(
       () => { if (dashboardRefreshPromise === currentRefresh) dashboardRefreshPromise = null; },
-      () => { if (dashboardRefreshPromise === currentRefresh) dashboardRefreshPromise = null; }
+      error => {
+        if (dashboardRefreshPromise === currentRefresh) dashboardRefreshPromise = null;
+        if (allowStale && !forceRefresh && refreshRevision === settingsRevision) {
+          dashboardEvents.failed(); console.error("Hintergrundaktualisierung fehlgeschlagen:", error.message);
+        }
+      }
     );
+  }
+
+  // Opening the page must not wait for a full account-history rebuild. Return
+  // the last verified document with its ORIGINAL timestamp while refreshing it.
+  if (allowStale && !forceRefresh && cached?.calculationVersion === DASHBOARD_CALCULATION_VERSION) {
+    return { ...cached, cache: { status: "stale", updating: true, ageMs: Date.now() - cachedAt, maxAgeMs: BACKGROUND_REFRESH_MS } };
   }
 
   const fresh = await dashboardRefreshPromise;
@@ -1452,6 +1490,7 @@ function collectWallets(value, wallets = []) {
 
 async function fetchWalletBalances() {
   const response = await fetch(`${BASE_URL}/asset-wallets`, {
+    signal: AbortSignal.timeout(15_000),
     headers: {
       "X-Api-Key": apiKey,
       Accept: "application/json"
@@ -1482,6 +1521,7 @@ async function fetchWalletBalances() {
 
 async function fetchFiatWalletBalances() {
   const response = await fetch(`${BASE_URL}/fiatwallets`, {
+    signal: AbortSignal.timeout(15_000),
     headers: {
       "X-Api-Key": apiKey,
       Accept: "application/json"
@@ -1872,15 +1912,8 @@ function isOnlyWantedFiatMovement(transaction) {
 
 async function fetchWantedFiatMovements() {
   const typesToLoad = ["deposit", "withdrawal", "transfer"];
-  const results = [];
-
-  for (const type of typesToLoad) {
-    const transactions = await fetchPaginated("/fiatwallets/transactions", {
-      type,
-      status: "finished"
-    });
-    results.push(...transactions);
-  }
+  const groups = await Promise.all(typesToLoad.map(type => fetchPaginated("/fiatwallets/transactions", { type, status: "finished" })));
+  const results = groups.flat();
 
   return uniqueById(results)
     .filter(isOnlyWantedFiatMovement)
@@ -1891,15 +1924,8 @@ async function fetchDividendMovements() {
   // Dividenden können je nach Bitpanda-JSON als transfer/refund/incoming o. Ä. erscheinen.
   // Deshalb laden wir finished Fiat-Transaktionen breiter und nehmen nur eindeutig als Dividende markierte Einträge.
   const typesToLoad = ["deposit", "withdrawal", "transfer", "refund"];
-  const results = [];
-
-  for (const type of typesToLoad) {
-    const transactions = await fetchPaginated("/fiatwallets/transactions", {
-      type,
-      status: "finished"
-    });
-    results.push(...transactions);
-  }
+  const groups = await Promise.all(typesToLoad.map(type => fetchPaginated("/fiatwallets/transactions", { type, status: "finished" })));
+  const results = groups.flat();
 
   return uniqueById(results)
     .filter(isFinished)
@@ -2579,7 +2605,14 @@ function calculateFiatPeriods(transactions, dividends = []) {
   };
 }
 
-async function fetchProfitLoss(savingsTransactions = [], { includeAccountInputs = false } = {}) {
+async function fetchProfitLoss(savingsTransactions = [], { includeAccountInputs = false, financingRequest } = {}) {
+  const inputsRequest = Promise.allSettled([
+    fetchPublicPaginated("/operations", {}, Number.POSITIVE_INFINITY), getPublicEurCurrencyId(), (financingRequest || fetchCryptoWalletTransactions()).catch(() => [])
+  ]);
+  const metadataRequest = includeAccountInputs ? Promise.allSettled([
+    loadPublicAssetCatalog(), publicApiRequest("/currencies"), publicApiRequest("/portfolio"),
+    fetchPaginated("/fiatwallets/transactions", { status: "finished" })
+  ]) : loadPublicAssetCatalog().catch(() => []);
   const [buys, sells] = await Promise.all([
     fetchPaginated("/trades", { type: "buy" }),
     fetchPaginated("/trades", { type: "sell" })
@@ -2588,22 +2621,18 @@ async function fetchProfitLoss(savingsTransactions = [], { includeAccountInputs 
   let paidTax;
   let accountInputs;
   try {
-    const [operations, eurCurrencyId, financingTransactions] = await Promise.all([
-      fetchPublicPaginated("/operations", {}, Number.POSITIVE_INFINITY),
-      getPublicEurCurrencyId(),
-      fetchCryptoWalletTransactions().catch(() => [])
-    ]);
+    const inputResults = await inputsRequest;
+    const failedInput = inputResults.find(result => result.status === "rejected");
+    if (failedInput) throw failedInput.reason;
+    const [operations, eurCurrencyId, financingTransactions] = inputResults.map(result => result.value);
     paidTax = calculatePaidTax(operations, { eurCurrencyId, trades });
     trades = enrichTradesWithLeverageFees(enrichTradesWithBookedFees(trades, operations, eurCurrencyId), operations, eurCurrencyId, financingTransactions);
     if (includeAccountInputs) {
-      const results = await Promise.allSettled([
-        loadPublicAssetCatalog(), publicApiRequest("/currencies"), publicApiRequest("/portfolio"),
-        fetchPaginated("/fiatwallets/transactions", { status: "finished" })
-      ]);
+      const results = await metadataRequest;
       const value = (index, fallback) => results[index].status === 'fulfilled' ? results[index].value : fallback;
       accountInputs = { operations, eurCurrencyId, trades, assets: value(0, []), currencies: value(1, {}).data || [], portfolio: value(2, {}).data || [], fiatTransactions: value(3, []), portfolioError: results[2].status === 'rejected' ? 'Bitpanda-Portfolio konnte nicht geladen werden.' : null, metadataErrors: results.flatMap((r, i) => r.status === 'rejected' ? [`${['Assetnamen', 'Währungen', 'Portfolio', 'Fiat-Belege'][i]} konnten nicht geladen werden.`] : []) };
     } else {
-      const catalog = await loadPublicAssetCatalog().catch(() => []);
+      const catalog = await metadataRequest;
       trades = enrichTradeAssetIdentity(trades, operations, catalog);
     }
   } catch {
@@ -3030,7 +3059,7 @@ app.get("/widget/portfolio", async (req, res) => {
 
 app.get("/dashboard-data", async (req, res) => {
   try {
-    const dashboard = await getDashboardData({ forceRefresh: req.query.refresh === "1" });
+    const dashboard = await getDashboardData({ forceRefresh: req.query.refresh === "1", allowStale: true });
     res.json(dashboard);
   } catch (error) {
     console.error(error);

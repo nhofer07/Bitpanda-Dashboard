@@ -72,7 +72,6 @@ export default function App() {
   const latestRequest = useRef(createLatestRequest());
   const hasDashboard = useRef(false);
   const configured = useRef(false);
-  const transactionVersion = useRef(0);
   const cashflowSync = useRef(null);
   if (!cashflowSync.current) cashflowSync.current = createCashflowSync({
     storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) },
@@ -110,7 +109,7 @@ export default function App() {
         } else {
           configured.current = true;
           loadSavedCashflowOverrides();
-          loadTransactions(); loadDashboardData();
+          loadDashboardData();
         }
       } catch (err) {
         setRefreshError(err.message);
@@ -185,29 +184,9 @@ export default function App() {
     }
   }, [selectedAssetKey]);
 
-  async function loadTransactions() {
-    const version = ++transactionVersion.current;
-    try {
-      setLoading(true);
-      setError("");
-
-      const response = await fetch("/api/transactions");
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Fehler beim Laden");
-      }
-
-      if (version === transactionVersion.current) setTransactions(data);
-    } catch (err) {
-      if (version === transactionVersion.current) setError(err.message);
-    } finally {
-      if (version === transactionVersion.current) setLoading(false);
-    }
-  }
-
   async function loadDashboardData({ refresh = false, silent = false, force = false, feedback = true } = {}) {
     const token = latestRequest.current.begin();
+    let waitingForFresh = false;
     try {
       setRefreshing(true);
       if (!refresh && !silent) setDashboardLoading(true);
@@ -220,13 +199,13 @@ export default function App() {
       }
 
       if (!latestRequest.current.accept(token, data)) return false;
+      waitingForFresh = data.cache?.updating === true;
       hasDashboard.current = true;
       setDashboardError("");
       setRefreshError("");
       setDashboardData(data);
       if (refresh && feedback) notify(data.paidTax?.available ? "Dashboard aktualisiert. Bestände, Gebühren und Steuerbuchungen sind geladen." : "Dashboard aktualisiert. Steuerbuchungen sind noch nicht verfügbar.", data.paidTax?.available ? "success" : "warning");
       if (Array.isArray(data.transactions)) {
-        transactionVersion.current++;
         setLoading(false);
         setError("");
         setTransactions(data.transactions);
@@ -235,13 +214,13 @@ export default function App() {
     } catch (err) {
       if (!latestRequest.current.current(token)) return false;
       setRefreshError(err.message);
-      if (!hasDashboard.current) setDashboardError(err.message);
+      if (!hasDashboard.current) { setDashboardError(err.message); setLoading(false); setError(err.message); }
       if (refresh && feedback) notify(`Aktualisieren fehlgeschlagen: ${err.message}`, "error");
       return false;
     } finally {
       if (latestRequest.current.current(token)) {
         setDashboardLoading(false);
-        setRefreshing(false);
+        setRefreshing(waitingForFresh);
       }
     }
   }

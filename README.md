@@ -46,6 +46,20 @@ Hintergrund-Timer selbst drosseln; die serverseitige Minutenaufzeichnung bleibt
 davon unabhängig. Bei Fokus, Sichtbarkeit oder Wiederherstellung der Seite wird
 der aktuelle Stand sofort erneut angefordert.
 
+Beim Öffnen wird ein vorhandener, gültiger Dashboard-Stand sofort angezeigt.
+Ist er älter als eine Minute, bleibt sein ursprünglicher Zeitstempel sichtbar,
+während der Server im Hintergrund aktualisiert. Manuelles Aktualisieren wartet
+auf neue Daten. Unabhängige API-Abrufe laufen parallel; identische gleichzeitige
+Leseabrufe werden zusammengefasst. Abgeschlossene Antworten werden dabei nicht
+zusätzlich zwischengespeichert. Einzelne API-Leseabrufe haben ein 15-Sekunden-Limit.
+Versionierte JavaScript-/CSS-Dateien dürfen im Browser-Cache bleiben; HTML und
+Manifeste werden bei jedem Aufruf erneut geprüft.
+
+Stückkurse unter 10 € werden mit vier Nachkommastellen angezeigt, auch in
+Kurscharts, Kaufhistorie und Einstiegskursen. Bei sehr kleinen Kursen werden
+zusätzliche Stellen verwendet; bei sehr kleinen Chart-Bewegungen erhöht sich
+auch die Genauigkeit der Skala, damit unterschiedliche Kurse unterscheidbar bleiben. Portfolio- und Buchungsbeträge bleiben zweistellig.
+
 Der Portfolioverlauf im Cockpit verwendet bevorzugt Bitpandas eigene EUR-Portfoliohistorie
 (`GET /v1/portfolio-history`) für Tag, Woche, Monat, sechs Monate und Jahr. Die
 Original-Messpunkte bleiben erhalten; belegte Korrekturen werden in der Darstellung gekennzeichnet; der Tageszeitraum umfasst die

@@ -1,5 +1,5 @@
 import AdaptiveTable from "./AdaptiveTable.jsx";
-import { formatCurrency, formatNumber, formatPercent } from "./formatters.js";
+import { formatPrice, formatCurrency, formatNumber, formatPercent } from "./formatters.js";
 import DataQuality from "./DataQuality.jsx";
 import { positionDayChange as calculatePositionDayChange, usablePositionDayHistory } from "./positionDayChange.js";
 import LoadingState from "./LoadingState.jsx";
@@ -315,7 +315,7 @@ function PositionCard({ position, onSelectAsset, marketHistoryRefreshKey, watchl
   const prices = points.map(point => Number(point.close)).filter(Number.isFinite);
   const first = prices[0];
   const last = prices.at(-1);
-  const watchPrice = last == null ? null : `${formatCurrency(last)}${historyMeta?.unit ? `/${historyMeta.unit}` : ""}`;
+  const watchPrice = last == null ? null : `${formatPrice(last)}${historyMeta?.unit ? `/${historyMeta.unit}` : ""}`;
   const todayPercent = prices.length > 1 && first > 0 ? (last / first - 1) * 100 : null;
   const assetPriceChange = todayPercent == null ? null : last - first;
   const dayChange = calculatePositionDayChange(position, dayHistory?.history);
@@ -339,12 +339,12 @@ function PositionCard({ position, onSelectAsset, marketHistoryRefreshKey, watchl
     }}>
     <header>
       <div className="position-card-identity"><span className="position-asset-mark" aria-hidden="true">{assetSymbol(position).slice(0, 2)}</span><div><strong title={assetTitle(position)}>{assetTitle(position)}</strong><small>{assetSymbol(position)} · {categoryName(position.category)}</small></div></div>
-      <div className="position-card-value"><strong>{watchlist ? (chartError ? "–" : watchPrice || "Lädt …") : (position.currentValue == null ? "–" : formatCurrency(position.currentValue))}</strong><small>{watchlist ? "Aktueller Marktkurs" : position.currentPrice == null ? "Kurs –" : `${formatCurrency(position.currentPrice)} · ${position.priceSource === "Bitpanda Portfolio API" ? "Bitpanda-Portfolio" : "Ticker-Ersatz"}`}</small></div>
+      <div className="position-card-value"><strong>{watchlist ? (chartError ? "–" : watchPrice || "Lädt …") : (position.currentValue == null ? "–" : formatCurrency(position.currentValue))}</strong><small>{watchlist ? "Aktueller Marktkurs" : position.currentPrice == null ? "Kurs –" : `${formatPrice(position.currentPrice)} · ${position.priceSource === "Bitpanda Portfolio API" ? "Bitpanda-Portfolio" : "Ticker-Ersatz"}`}</small></div>
     </header>
     <div className="position-card-chart">
       {prices.length > 1 ? <svg viewBox="0 0 320 100" preserveAspectRatio="none" role="img" aria-label={`Kursverlauf ${assetTitle(position)} · ${marketDayLabel}`}><line x1="0" x2="320" y1="50" y2="50" /><polyline points={line} className={positive ? "positive-line" : "negative-line"} /></svg> : <div className="position-chart-placeholder">{chartError ? "Tageschart nicht verfügbar" : "Tageschart wird geladen …"}</div>}
     </div>
-    <div className="position-card-today"><span>Asset-Kursänderung<small>{marketDayLabel} · pro Einheit</small></span><strong className={todayPercent == null ? "muted" : positive ? "positive" : "negative"}>{todayPercent == null ? "–" : <>{todayPercent >= 0 ? "+" : ""}{formatPercent(todayPercent)}{assetPriceChange != null && <small>{assetPriceChange >= 0 ? "+" : ""}{formatCurrency(assetPriceChange)}{historyMeta?.unit ? `/${historyMeta.unit}` : ""}</small>}</>}</strong></div>
+    <div className="position-card-today"><span>Asset-Kursänderung<small>{marketDayLabel} · pro Einheit</small></span><strong className={todayPercent == null ? "muted" : positive ? "positive" : "negative"}>{todayPercent == null ? "–" : <>{todayPercent >= 0 ? "+" : ""}{formatPercent(todayPercent)}{assetPriceChange != null && <small>{assetPriceChange >= 0 ? "+" : ""}{formatPrice(assetPriceChange)}{historyMeta?.unit ? `/${historyMeta.unit}` : ""}</small>}</>}</strong></div>
     </div>
     {!watchlist && <dl className="position-card-summary">
       <div><dt>Unrealisiert</dt><dd className={position.unrealizedProfit == null ? "muted" : position.unrealizedProfit >= 0 ? "positive" : "negative"}>{formatCurrency(position.unrealizedProfit)}<small>{formatPercent(position.unrealizedProfitPercent)}</small></dd></div>
@@ -359,7 +359,7 @@ function PositionCard({ position, onSelectAsset, marketHistoryRefreshKey, watchl
       <div><dt title="Verbleibende Kaufkosten einschließlich Kaufgebühren aus der Trade-Historie">Kaufkosten inkl. Gebühren</dt><dd>{position.historicalAcquisitionCost == null ? "–" : formatCurrency(position.historicalAcquisitionCost)}</dd></div>
       <div><dt>Realisierter Gewinn</dt><dd className={Number(position.realizedProfit || 0) >= 0 ? "positive" : "negative"}>{formatCurrency(position.realizedProfit)}</dd></div>
       <div><dt>Unrealisiert</dt><dd className={position.unrealizedProfit == null ? "muted" : Number(position.unrealizedProfit) >= 0 ? "positive" : "negative"}>{position.unrealizedProfit == null ? "–" : formatCurrency(position.unrealizedProfit)}<small>{formatPercent(position.unrealizedProfitPercent)}</small></dd></div>
-      <div><dt title={position.averageEntrySource}>Ø Einstieg</dt><dd>{position.averageRemainingCost == null ? "–" : formatCurrency(position.averageRemainingCost)}</dd><DataQuality kind={position.averageRemainingCost == null ? "unknown" : position.averageEntrySource === "Bitpanda Portfolio API" ? "reported" : "estimated"} /></div>
+      <div><dt title={position.averageEntrySource}>Ø Einstieg</dt><dd>{position.averageRemainingCost == null ? "–" : formatPrice(position.averageRemainingCost)}</dd><DataQuality kind={position.averageRemainingCost == null ? "unknown" : position.averageEntrySource === "Bitpanda Portfolio API" ? "reported" : "estimated"} /></div>
       <div><dt>Bitpanda-Kurs · 24 h</dt><dd className={position.priceChangeDay == null ? "muted" : Number(position.priceChangeDay) >= 0 ? "positive" : "negative"}>{formatPercent(position.priceChangeDay)}</dd></div></dl>}
     {!watchlist && <div className="position-card-return">
       <span>Deine Positionsänderung · 24 h<small>Jetzt gegenüber vor 24 h · aktueller Bestand</small>{dayHistory && dayHistory.source !== "Bitpanda · Original-Kursdaten" && <small>Vergleichskurs: {dayHistory.resolvedSymbol || assetSymbol(position)} · {dayHistory.source} (EUR)</small>}</span>

@@ -12,6 +12,19 @@ export function formatCurrency(value) {
   const number = numericValue(value);
   return number == null ? '–' : `${(Math.abs(number) < 0.005 ? 0 : number).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 }
+export function priceDigits(value) {
+  const number = numericValue(value);
+  if (number == null || number === 0) return 4;
+  const absolute = Math.abs(number);
+  return absolute < 0.01 ? Math.min(12, Math.max(4, Math.ceil(-Math.log10(absolute)) + 3)) : absolute < 10 ? 4 : 2;
+}
+export function formatPriceNumber(value, digits = priceDigits(value)) {
+  const number = numericValue(value);
+  return number == null ? '–' : number.toLocaleString('de-DE', { minimumFractionDigits: Math.min(digits, 4), maximumFractionDigits: digits });
+}
+export function formatPrice(value) {
+  return numericValue(value) == null ? '–' : `${formatPriceNumber(value)} €`;
+}
 export function formatPercent(value) {
   const number = numericValue(value);
   return number == null ? '–' : `${(Math.abs(number) < 0.005 ? 0 : number).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
