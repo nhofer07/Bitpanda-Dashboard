@@ -50,6 +50,21 @@ class SynologyUpdaterTest(unittest.TestCase):
             if 'ssh' in call:
                 subprocess.run(['/bin/sh', '-n', '-c', call[-1]], check=True)
 
+    def test_compose_is_validated_before_stopping_or_backing_up(self):
+        _, calls = self.run_updater()
+        remote = '\n'.join(' '.join(call) for call in calls)
+        self.assertLess(remote.index('config --quiet'), remote.index('stop --time'))
+        self.assertLess(remote.index('config --quiet'), remote.index('tar -czf'))
+
+    def test_callback_avoids_nested_interpolation_rejected_by_legacy_compose(self):
+        import re
+        source = (ROOT / 'docker-compose.yml').read_text()
+        self.assertNotRegex(source, r'\$\{[^}]*\$\{')
+        for port in ['8085', '8086']:
+            expanded = re.sub(r'\$\{DASHBOARD_PORT:-8085\}', port, source)
+            self.assertIn(f'"127.0.0.1:1{port}:1{port}"', expanded)
+            self.assertIn(f'CHATGPT_CALLBACK_PORT: "1{port}"', expanded)
+
     def test_j_selects_only_josi_then_r_returns_to_nico(self):
         _, calls = self.run_updater('J\nR\n')
         builds = [' '.join(call) for call in calls if any('up -d --build' in arg for arg in call)]

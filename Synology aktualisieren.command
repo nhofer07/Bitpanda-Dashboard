@@ -197,7 +197,7 @@ run_remote "mkdir -p '$REMOTE_DIR' && rm -rf '$REMOTE_DIR/synology-frontend' && 
 REMOTE_PATH="PATH='/var/packages/ContainerManager/target/usr/bin:/var/packages/Docker/target/usr/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin' && export PATH && cd '$REMOTE_DIR'"
 
 progress 'Docker und Compose prüfen'
-run_remote "$REMOTE_PATH && command -v docker >/dev/null && command -v docker-compose >/dev/null"
+run_remote "$REMOTE_PATH && command -v docker >/dev/null && C=\"\$(command -v docker-compose)\" && sudo \"\$C\" --env-file '$COMPOSE_ENV' -p '$COMPOSE_PROJECT' -f docker-compose.yml -f docker-compose.synology.yml config --quiet"
 
 progress 'Administratorzugriff bestätigen'
 run_remote "$REMOTE_PATH && sudo -v"
